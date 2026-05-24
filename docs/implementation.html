@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deep Research Agent - Guia interactiva del proyecto</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f4efe7;
+      --paper: #fffaf3;
+      --paper-strong: #f8f0e2;
+      --ink: #1f1a17;
+      --muted: #655f56;
+      --accent: #0f766e;
+      --accent-soft: #d6efe9;
+      --warm: #c2410c;
+      --warm-soft: #fee7d8;
+      --line: rgba(31, 26, 23, 0.12);
+      --shadow: 0 22px 60px rgba(62, 44, 26, 0.12);
+      --mono: "SFMono-Regular", "Liberation Mono", Menlo, Monaco, Consolas, monospace;
+      --heading: "Avenir Next", "Trebuchet MS", sans-serif;
+      --body: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: var(--body);
+      line-height: 1.6;
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(194, 65, 12, 0.14), transparent 26%),
+        linear-gradient(180deg, #f7f1e7 0%, #f4efe7 100%);
+    }
+
+    a {
+      color: inherit;
+    }
+
+    code,
+    pre,
+    input,
+    button {
+      font-family: var(--mono);
+    }
+
+    .page-shell {
+      width: min(1220px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .panel {
+      position: relative;
+      background: rgba(255, 250, 243, 0.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 6px;
+      background: linear-gradient(90deg, var(--accent) 0%, #5fbdb5 55%, var(--warm) 100%);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+      gap: 24px;
+      padding: 38px;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow,
+    .section-kicker,
+    .detail-kicker {
+      margin: 0 0 10px;
+      color: var(--accent);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      font-family: var(--heading);
+      font-weight: 700;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      margin: 0 0 12px;
+      font-family: var(--heading);
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 6vw, 4.8rem);
+      max-width: 11ch;
+    }
+
+    h2 {
+      font-size: clamp(1.7rem, 3vw, 2.4rem);
+    }
+
+    h3 {
+      font-size: 1.2rem;
+    }
+
+    p,
+    li,
+    td,
+    th,
+    summary,
+    label {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    strong,
+    th,
+    .text-strong {
+      color: var(--ink);
+    }
+
+    .lead {
+      max-width: 66ch;
+      font-size: 1.08rem;
+      margin-bottom: 22px;
+    }
+
+    .hero-actions,
+    .sticky-nav,
+    .chip-row,
+    .filter-row,
+    .stepper,
+    .use-case-nav,
+    .tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .button,
+    .sticky-nav a,
+    .chip,
+    .filter-button,
+    .step,
+    .use-case-button,
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--ink);
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+      font-size: 0.92rem;
+      font-family: var(--heading);
+      font-weight: 700;
+    }
+
+    .button:hover,
+    .sticky-nav a:hover,
+    .filter-button:hover,
+    .step:hover,
+    .use-case-button:hover,
+    .tab:hover,
+    .module-card:hover {
+      transform: translateY(-1px);
+      border-color: rgba(15, 118, 110, 0.32);
+      box-shadow: 0 12px 24px rgba(15, 118, 110, 0.12);
+    }
+
+    .button.primary {
+      background: linear-gradient(135deg, var(--accent) 0%, #14877f 100%);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .button.secondary {
+      background: linear-gradient(135deg, var(--warm-soft) 0%, #fff1e8 100%);
+      color: var(--warm);
+      border-color: rgba(194, 65, 12, 0.22);
+    }
+
+    .hero-meta {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .metric {
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 240, 226, 0.9));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .metric span {
+      display: block;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-family: var(--heading);
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.08rem;
+      line-height: 1.3;
+    }
+
+    .sticky-nav {
+      position: sticky;
+      top: 14px;
+      z-index: 10;
+      padding: 14px;
+      margin-bottom: 18px;
+      background: rgba(255, 250, 243, 0.78);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+    }
+
+    section.panel {
+      padding: 28px;
+    }
+
+    .split-grid,
+    .feature-grid,
+    .decision-grid,
+    .detail-columns,
+    .config-grid,
+    .meta-grid,
+    .map-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .split-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .feature-grid,
+    .decision-grid,
+    .config-grid,
+    .meta-grid,
+    .map-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .detail-columns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card,
+    .detail-panel,
+    .step-detail,
+    .case-panel,
+    .tab-panel,
+    details,
+    .callout,
+    .map-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(248, 240, 226, 0.74));
+    }
+
+    .card,
+    .map-card,
+    .callout {
+      padding: 18px;
+    }
+
+    .status-ribbon {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--heading);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .status-ribbon.warn {
+      background: var(--warm-soft);
+      color: var(--warm);
+    }
+
+    .chip {
+      min-height: 34px;
+      padding: 0 12px;
+      background: var(--paper-strong);
+      font-size: 0.84rem;
+    }
+
+    .search-input {
+      width: min(360px, 100%);
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      color: var(--ink);
+      font-size: 0.95rem;
+    }
+
+    .search-input:focus-visible,
+    .button:focus-visible,
+    .filter-button:focus-visible,
+    .step:focus-visible,
+    .use-case-button:focus-visible,
+    .tab:focus-visible,
+    .module-card:focus-visible,
+    .sticky-nav a:focus-visible {
+      outline: 3px solid rgba(15, 118, 110, 0.22);
+      outline-offset: 2px;
+    }
+
+    .explorer-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.95fr);
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+
+    .module-card {
+      width: 100%;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 240, 226, 0.68));
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    .module-card.is-active,
+    .filter-button.is-active,
+    .step.is-active,
+    .use-case-button.is-active,
+    .tab.is-active {
+      border-color: rgba(15, 118, 110, 0.32);
+      background: linear-gradient(180deg, rgba(214, 239, 233, 0.95), rgba(255, 255, 255, 0.92));
+      box-shadow: 0 16px 30px rgba(15, 118, 110, 0.12);
+    }
+
+    .module-group {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--paper-strong);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-family: var(--heading);
+      color: var(--accent);
+    }
+
+    .module-card strong,
+    .map-card strong,
+    .meta-box strong {
+      display: block;
+      font-family: var(--heading);
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+
+    .module-card span:last-child,
+    .module-card small,
+    .meta-box span {
+      color: var(--muted);
+    }
+
+    .detail-panel,
+    .step-detail,
+    .case-panel,
+    .tab-panel {
+      padding: 20px;
+    }
+
+    .detail-panel h3,
+    .step-detail h3,
+    .case-panel h3,
+    .tab-panel h3 {
+      margin-bottom: 10px;
+    }
+
+    .detail-panel ul,
+    .step-detail ul,
+    .case-panel ul,
+    .tab-panel ul,
+    .card ul,
+    details ul,
+    .map-card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .empty-state {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(194, 65, 12, 0.08);
+      color: var(--warm);
+      border: 1px solid rgba(194, 65, 12, 0.16);
+    }
+
+    .meta-box {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .stepper,
+    .use-case-nav,
+    .tabbar {
+      margin-bottom: 16px;
+    }
+
+    .step {
+      min-height: 40px;
+      padding-inline: 14px;
+    }
+
+    .flow-note {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+      background: rgba(214, 239, 233, 0.54);
+    }
+
+    details {
+      padding: 16px 18px;
+    }
+
+    details + details {
+      margin-top: 12px;
+    }
+
+    summary {
+      list-style: none;
+      cursor: pointer;
+      font-family: var(--heading);
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      content: "+";
+      float: right;
+      color: var(--accent);
+    }
+
+    details[open] summary::after {
+      content: "-";
+    }
+
+    pre {
+      margin: 16px 0 0;
+      padding: 16px;
+      overflow-x: auto;
+      border-radius: 16px;
+      border: 1px solid rgba(15, 118, 110, 0.12);
+      background: #10231f;
+      color: #ecfdf5;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    code.inline {
+      padding: 0.12rem 0.35rem;
+      border-radius: 8px;
+      background: rgba(15, 118, 110, 0.08);
+      color: var(--accent);
+      font-size: 0.94em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 12px;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .footer-note {
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    @media (max-width: 980px) {
+      .hero,
+      .split-grid,
+      .detail-columns,
+      .explorer-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .page-shell {
+        width: min(100% - 18px, 1220px);
+        padding-top: 18px;
+      }
+
+      section.panel,
+      .hero {
+        padding: 22px;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .sticky-nav {
+        top: 8px;
+      }
+
+      h1 {
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero panel" id="top">
+      <div>
+        <p class="eyebrow">Guia interactiva del proyecto</p>
+        <h1>Deep Research Agent</h1>
+        <p class="lead">
+          Runtime de investigacion profunda construido en Python y LangGraph para ejecutar
+          planes iterativos con checkpoints humanos, persistencia por <code class="inline">thread_id</code>,
+          salida JSON estable y empaquetado listo para CLI, Docker Compose y skill de repositorio.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#explorer">Explorar modulos</a>
+          <a class="button secondary" href="#integration">Ver integraciones</a>
+        </div>
+      </div>
+      <aside class="hero-meta" aria-label="Resumen rapido del sistema">
+        <div class="metric">
+          <span>Interfaces disponibles</span>
+          <strong>CLI, servicio Python, Docker Compose y skill para otro LLM</strong>
+        </div>
+        <div class="metric">
+          <span>Flujo HITL</span>
+          <strong>2 pausas humanas: aprobacion del plan y revision de suficiencia</strong>
+        </div>
+        <div class="metric">
+          <span>Persistencia</span>
+          <strong>SQLite para local, Postgres para Compose y entornos durables</strong>
+        </div>
+        <div class="metric">
+          <span>Estado actual</span>
+          <strong>MVP funcional. MCP se integra encima del runtime, no viene implementado como servidor.</strong>
+        </div>
+      </aside>
+    </header>
+
+    <nav class="sticky-nav" aria-label="Navegacion principal">
+      <a href="#overview">Resumen</a>
+      <a href="#explorer">Explorador</a>
+      <a href="#flow">Flujo</a>
+      <a href="#use-cases">Casos de uso</a>
+      <a href="#config">Configuracion</a>
+      <a href="#integration">Integraciones</a>
+      <a href="#project-map">Mapa</a>
+      <a href="#decisions">Decisiones</a>
+    </nav>
+
+    <main>
+      <section class="panel" id="overview">
+        <p class="section-kicker">Resumen operativo</p>
+        <h2>Que cubre este repositorio</h2>
+        <div class="split-grid">
+          <div class="card">
+            <div class="status-ribbon">Implementado hoy</div>
+            <ul>
+              <li>CLI con <code class="inline">run</code>, <code class="inline">resume</code> y <code class="inline">list-pending</code>.</li>
+              <li>Grafo LangGraph con planeamiento, busqueda, extraccion, reflexion y sintesis.</li>
+              <li>Persistencia de runs y checkpoints con SQLite o Postgres.</li>
+              <li>Servicios para OpenAI y Ollama, busqueda Tavily/Serper/fallback sin API, y reporte Markdown con citas.</li>
+              <li>Empaquetado con Docker Compose y skill <code class="inline">deep-research-agent-compose</code>.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="status-ribbon warn">Importante para integrar</div>
+            <ul>
+              <li>No hay servidor HTTP ni servidor MCP listo para arrancar en este repo.</li>
+              <li>Los enums incluyen mas proveedores de los que el MVP soporta realmente.</li>
+              <li><code class="inline">firecrawl</code> figura como enum, pero hoy falla explicitamente como backend de busqueda.</li>
+              <li><code class="inline">runtime/placeholders.py</code> conserva nodos reservados de una fase previa y no participa del flujo real.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-grid" style="margin-top: 16px;">
+          <article class="card">
+            <h3>Arquitectura en capas</h3>
+            <p>Interfaces arriba, runtime en el centro, servicios y persistencia debajo, y assets de entrega alrededor.</p>
+          </article>
+          <article class="card">
+            <h3>Contrato externo estable</h3>
+            <p>La salida JSON de la CLI es la mejor superficie para skills, scripts de automatizacion y adaptadores MCP.</p>
+          </article>
+          <article class="card">
+            <h3>Control humano real</h3>
+            <p>El agente siempre puede pausar con contexto estructurado antes de recuperar fuentes o antes de sintetizar.</p>
+          </article>
+          <article class="card">
+            <h3>Pruebas del comportamiento</h3>
+            <p>La suite valida el loop completo, persistencia, formateo del reporte, configuracion y assets operativos.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="explorer">
+        <p class="section-kicker">Explorador del proyecto</p>
+        <h2>Recorre el codigo por capa</h2>
+        <p class="lead">
+          Filtra por categoria o busca por palabra clave. El panel de detalle resume que hace cada archivo,
+          que contrato expone y en que punto conviene tocarlo para extender el sistema.
+        </p>
+        <div class="filter-row">
+          <label for="module-search" class="text-strong">Buscar modulo</label>
+          <input id="module-search" class="search-input" type="search" placeholder="cli, graph, postgres, mcp, skill..." aria-label="Buscar modulo">
+        </div>
+        <div class="filter-row" style="margin-top: 12px;">
+          <button type="button" class="filter-button is-active" data-filter="all">Todo</button>
+          <button type="button" class="filter-button" data-filter="interfaces">Interfaces</button>
+          <button type="button" class="filter-button" data-filter="domain">Domain</button>
+          <button type="button" class="filter-button" data-filter="runtime">Runtime</button>
+          <button type="button" class="filter-button" data-filter="services">Services</button>
+          <button type="button" class="filter-button" data-filter="persistence">Persistence</button>
+          <button type="button" class="filter-button" data-filter="delivery">Entrega</button>
+          <button type="button" class="filter-button" data-filter="tests">Tests</button>
+        </div>
+        <div class="explorer-layout">
+          <div>
+            <div class="module-grid" id="module-grid">
+              <button type="button" class="module-card is-active" data-module="cli" data-group="interfaces" data-keywords="cli run resume list pending argparse json thread_id command line">
+                <span class="module-group">Interfaces</span>
+                <strong>cli.py</strong>
+                <span>Entrada principal para ejecutar y reanudar el agente desde terminal.</span>
+              </button>
+              <button type="button" class="module-card" data-module="settings" data-group="interfaces" data-keywords="settings env pydantic DEEP_RESEARCH provider postgres sqlite budgets">
+                <span class="module-group">Interfaces</span>
+                <strong>settings.py</strong>
+                <span>Configuracion declarativa del runtime y su contrato de variables de entorno.</span>
+              </button>
+              <button type="button" class="module-card" data-module="domain-models" data-group="domain" data-keywords="domain models enums runstatus humandecision researchrequest source evidence">
+                <span class="module-group">Domain</span>
+                <strong>domain/models.py</strong>
+                <span>Modelos Pydantic y enums compartidos por todo el proyecto.</span>
+              </button>
+              <button type="button" class="module-card" data-module="domain-state" data-group="domain" data-keywords="domain state reducers typed dict merge sources evidence notes iterations">
+                <span class="module-group">Domain</span>
+                <strong>domain/state.py</strong>
+                <span>Estado del grafo y reducers que acumulan tareas, fuentes, evidencia y citas.</span>
+              </button>
+              <button type="button" class="module-card" data-module="runtime-graph" data-group="runtime" data-keywords="runtime graph langgraph interrupt plan review search extract reflect synthesize">
+                <span class="module-group">Runtime</span>
+                <strong>runtime/graph.py</strong>
+                <span>Orquesta el flujo completo HITL con LangGraph.</span>
+              </button>
+              <button type="button" class="module-card" data-module="runtime-service" data-group="runtime" data-keywords="runtime service start_run resume_run list_pending Command thread_id json render">
+                <span class="module-group">Runtime</span>
+                <strong>runtime/service.py</strong>
+                <span>Fachada operativa para iniciar, reanudar y listar runs persistidos.</span>
+              </button>
+              <button type="button" class="module-card" data-module="persistence" data-group="persistence" data-keywords="sqlite postgres run store checkpointer asyncpg aiosqlite checkpoint">
+                <span class="module-group">Persistence</span>
+                <strong>persistence/backends.py</strong>
+                <span>RunStore, checkpointer y conmutacion SQLite/Postgres.</span>
+              </button>
+              <button type="button" class="module-card" data-module="llm" data-group="services" data-keywords="llm openai ollama json schema structured provider configuration">
+                <span class="module-group">Services</span>
+                <strong>services/llm.py</strong>
+                <span>Planea, refleja y sintetiza usando respuestas JSON estructuradas.</span>
+              </button>
+              <button type="button" class="module-card" data-module="search" data-group="services" data-keywords="search tavily serper duckduckgo firecrawl canonicalize stable hash provider">
+                <span class="module-group">Services</span>
+                <strong>services/search.py</strong>
+                <span>Busqueda web, deduplicacion canonica y fallback sin API.</span>
+              </button>
+              <button type="button" class="module-card" data-module="extractor" data-group="services" data-keywords="extractor extraction html parser keyword overlap evidence raw content content chars">
+                <span class="module-group">Services</span>
+                <strong>services/extraction.py</strong>
+                <span>Convierte fuentes en evidencia usando heuristicas de pasajes.</span>
+              </button>
+              <button type="button" class="module-card" data-module="reporting" data-group="services" data-keywords="reporting report formatter markdown citations sources summary points final report">
+                <span class="module-group">Services</span>
+                <strong>services/reporting.py</strong>
+                <span>Transforma la sintesis estructurada en Markdown con citas estables.</span>
+              </button>
+              <button type="button" class="module-card" data-module="delivery" data-group="delivery" data-keywords="docker compose script skill workflow env example compose-agent delivery assets">
+                <span class="module-group">Entrega</span>
+                <strong>Docker Compose + skill</strong>
+                <span>Empaquetado del runtime para operar el agente sin entorno Python local.</span>
+              </button>
+              <button type="button" class="module-card" data-module="tests" data-group="tests" data-keywords="tests fake bundle runtime flow cli settings compose assets report formatting">
+                <span class="module-group">Tests</span>
+                <strong>tests/</strong>
+                <span>Suite que fija el contrato operativo y el comportamiento del MVP.</span>
+              </button>
+              <button type="button" class="module-card" data-module="placeholders" data-group="runtime" data-keywords="placeholders not implemented reserved planner search extract reflect synthesize">
+                <span class="module-group">Runtime</span>
+                <strong>runtime/placeholders.py</strong>
+                <span>Nodos reservados de una fase previa. Sirven como limite explicito del MVP actual.</span>
+              </button>
+            </div>
+            <p class="empty-state" id="module-empty" hidden>No hay modulos visibles para ese filtro. Prueba con otra palabra o vuelve a "Todo".</p>
+          </div>
+
+          <aside class="detail-panel" aria-live="polite">
+            <p class="detail-kicker" id="module-path">src/deep_research_agent/cli.py</p>
+            <h3 id="module-title">cli.py</h3>
+            <p id="module-summary">Entrada operativa del sistema. Toma argumentos de terminal, construye ResearchRequest y delega en ResearchRuntimeService.</p>
+            <div class="detail-columns" style="margin-top: 16px;">
+              <div>
+                <h4>Contratos clave</h4>
+                <ul id="module-contracts"></ul>
+              </div>
+              <div>
+                <h4>Donde extenderlo</h4>
+                <ul id="module-extension"></ul>
+              </div>
+            </div>
+            <p id="module-notes" class="footer-note"></p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="panel" id="flow">
+        <p class="section-kicker">Flujo del runtime</p>
+        <h2>Sigue el ciclo de una investigacion</h2>
+        <p class="lead">
+          El stepper resume el comportamiento real de <code class="inline">runtime/graph.py</code> y la forma en que
+          <code class="inline">runtime/service.py</code> persiste estado, interrupciones y salidas JSON.
+        </p>
+        <div class="stepper" id="flow-stepper" role="tablist" aria-label="Fases del runtime">
+          <button type="button" class="step is-active" data-step="0">1. Entrada</button>
+          <button type="button" class="step" data-step="1">2. Plan</button>
+          <button type="button" class="step" data-step="2">3. Loop</button>
+          <button type="button" class="step" data-step="3">4. Revision</button>
+          <button type="button" class="step" data-step="4">5. Resume</button>
+          <button type="button" class="step" data-step="5">6. Sintesis</button>
+          <button type="button" class="step" data-step="6">7. Persistencia</button>
+        </div>
+        <div class="step-detail" aria-live="polite">
+          <p class="detail-kicker" id="flow-phase">Fase 1</p>
+          <h3 id="flow-title">Entrada y construccion del request</h3>
+          <p id="flow-summary">La CLI o un host Python crean ResearchRequest, cargan AppSettings y delegan en ResearchRuntimeService.</p>
+          <div class="detail-columns" style="margin-top: 16px;">
+            <div>
+              <h4>Entradas y salidas</h4>
+              <ul id="flow-io"></ul>
+            </div>
+            <div>
+              <h4>Puntos de control</h4>
+              <ul id="flow-controls"></ul>
+            </div>
+          </div>
+          <pre><code id="flow-code"></code></pre>
+        </div>
+        <div class="flow-note">
+          <strong class="text-strong">Clave del diseño:</strong>
+          el runtime no usa una cola externa ni una API HTTP. El handoff estable es
+          <code class="inline">thread_id</code> + estado JSON + <code class="inline">pending_human_input</code>.
+          Eso hace que skill, scripts o un adaptador MCP puedan operar el agente sin tocar el grafo interno.
+        </div>
+      </section>
+
+      <section class="panel" id="use-cases">
+        <p class="section-kicker">Casos de uso</p>
+        <h2>Cuando este proyecto encaja bien</h2>
+        <p class="lead">
+          Selecciona un escenario. El panel resume por que sirve, como integrarlo y que parte del repo conviene reutilizar.
+        </p>
+        <div class="use-case-nav" id="use-case-nav" role="tablist" aria-label="Casos de uso">
+          <button type="button" class="use-case-button is-active" data-case="market">Market intelligence</button>
+          <button type="button" class="use-case-button" data-case="diligence">Due diligence tecnica</button>
+          <button type="button" class="use-case-button" data-case="internal">Sistesis de fuentes internas</button>
+          <button type="button" class="use-case-button" data-case="governed">Flujos gobernados</button>
+        </div>
+        <div class="case-panel" aria-live="polite">
+          <p class="detail-kicker" id="case-fit">Encaje recomendado</p>
+          <h3 id="case-title">Market intelligence</h3>
+          <p id="case-summary">Ideal para explorar mercados, proveedores y riesgos con checkpoints humanos antes de publicar una sintesis.</p>
+          <div class="meta-grid" style="margin-top: 16px;">
+            <div class="meta-box">
+              <span>Integracion sugerida</span>
+              <strong id="case-integration">Docker Compose o CLI</strong>
+            </div>
+            <div class="meta-box">
+              <span>Proveedor recomendado</span>
+              <strong id="case-provider">OpenAI u Ollama</strong>
+            </div>
+            <div class="meta-box">
+              <span>Superficie a reutilizar</span>
+              <strong id="case-surface">CLI y ReportFormatter</strong>
+            </div>
+          </div>
+          <ul id="case-list" style="margin-top: 16px;"></ul>
+          <pre><code id="case-code"></code></pre>
+        </div>
+      </section>
+
+      <section class="panel" id="config">
+        <p class="section-kicker">Configuracion y contratos</p>
+        <h2>Que se configura y que queda fijo</h2>
+        <div class="config-grid">
+          <article class="map-card">
+            <strong>Prefijo de entorno</strong>
+            <p>Toda la configuracion entra por variables <code class="inline">DEEP_RESEARCH_*</code>, con lectura desde <code class="inline">.env</code>.</p>
+          </article>
+          <article class="map-card">
+            <strong>Backends de persistencia</strong>
+            <p><code class="inline">checkpoint_db_url</code> deriva a SQLite o Postgres segun <code class="inline">persistence_backend</code>.</p>
+          </article>
+          <article class="map-card">
+            <strong>Salida estable</strong>
+            <p>La CLI imprime JSON ordenado; esa salida es el contrato mas seguro para automatizar el agente.</p>
+          </article>
+          <article class="map-card">
+            <strong>Guardas del loop</strong>
+            <p><code class="inline">max_iterations</code> evita iteraciones infinitas y fuerza una revision de suficiencia.</p>
+          </article>
+        </div>
+
+        <details open>
+          <summary>Modelos y proveedores de LLM</summary>
+          <ul>
+            <li>Soportados en el MVP: <code class="inline">openai</code> y <code class="inline">ollama</code>.</li>
+            <li>OpenAI requiere <code class="inline">DEEP_RESEARCH_OPENAI_API_KEY</code>.</li>
+            <li>Los enums incluyen <code class="inline">anthropic</code>, <code class="inline">google</code> y <code class="inline">azure_openai</code>, pero hoy fallan explicitamente si intentas usarlos.</li>
+            <li>El servicio exige respuestas JSON que validen contra esquemas Pydantic.</li>
+          </ul>
+        </details>
+
+        <details>
+          <summary>Busqueda, extraccion y limites de contenido</summary>
+          <ul>
+            <li><code class="inline">none</code> usa DuckDuckGo HTML y deduplicacion por URL canonica.</li>
+            <li><code class="inline">tavily</code> y <code class="inline">serper</code> funcionan si hay API keys; si faltan, el sistema cae al fallback sin API.</li>
+            <li><code class="inline">firecrawl</code> aparece como enum pero no esta soportado como backend de busqueda del MVP.</li>
+            <li>La extraccion no usa embeddings: toma texto bruto, corta por <code class="inline">max_content_chars_per_source</code> y selecciona pasajes por solapamiento de palabras clave.</li>
+          </ul>
+        </details>
+
+        <details>
+          <summary>Persistencia, interrupciones y resultados</summary>
+          <ul>
+            <li>SQLite guarda el runtime localmente con <code class="inline">aiosqlite</code> y <code class="inline">AsyncSqliteSaver</code>.</li>
+            <li>Postgres requiere dependencias opcionales y se usa por defecto en Docker Compose.</li>
+            <li>Cada comando actualiza el <code class="inline">RunStore</code> con <code class="inline">latest_state</code>, <code class="inline">latest_interrupts</code> y <code class="inline">last_message</code>.</li>
+            <li>Un host externo solo necesita persistir o reenviar <code class="inline">thread_id</code>, decision humana y payload opcional.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="panel" id="integration">
+        <p class="section-kicker">Integraciones</p>
+        <h2>Como llevarlo a otros proyectos</h2>
+        <p class="lead">
+          Esta es la seccion util para acoplar el agente a otra herramienta. Skill y Docker Compose existen hoy.
+          MCP es un patron de adaptacion recomendado sobre la CLI o sobre <code class="inline">ResearchRuntimeService</code>.
+        </p>
+        <div class="tabbar" id="integration-tabs" role="tablist" aria-label="Formas de integracion">
+          <button type="button" class="tab is-active" data-tab="compose">Docker Compose</button>
+          <button type="button" class="tab" data-tab="skill">Skill</button>
+          <button type="button" class="tab" data-tab="python">Python embebido</button>
+          <button type="button" class="tab" data-tab="mcp">Adaptador MCP</button>
+          <button type="button" class="tab" data-tab="cli">CLI local</button>
+        </div>
+
+        <article class="tab-panel" data-panel="compose">
+          <h3>Docker Compose</h3>
+          <p>Es la integracion operativa mas completa si quieres ejecutar el agente sin entorno Python local y con Postgres listo para persistir checkpoints.</p>
+          <pre><code>cp .env.example .env
+./scripts/compose-agent.sh bootstrap
+./scripts/compose-agent.sh run --query "Assess the AI infrastructure market"
+./scripts/compose-agent.sh list-pending
+./scripts/compose-agent.sh resume --thread-id &lt;thread_id&gt; --decision approve --summary "Proceed"
+./scripts/compose-agent.sh down</code></pre>
+          <ul>
+            <li><strong>Ventaja:</strong> el script espera a que Postgres este sano antes de ejecutar el comando real.</li>
+            <li><strong>Contrato:</strong> el servicio <code class="inline">app</code> corre el entrypoint CLI y devuelve JSON por stdout.</li>
+            <li><strong>Cuando usarlo:</strong> demos, operacion manual, skill de repositorio, integraciones en CI o hosts sin venv.</li>
+          </ul>
+        </article>
+
+        <article class="tab-panel" data-panel="skill" hidden>
+          <h3>Skill para otro LLM</h3>
+          <p>El repo ya incluye <code class="inline">.github/skills/deep-research-agent-compose/</code>. Esa skill describe cuando usar el agente, como arrancar el stack y como continuar un thread.</p>
+          <pre><code>Skill existente:
+.github/skills/deep-research-agent-compose/SKILL.md
+
+Referencia operativa:
+.github/skills/deep-research-agent-compose/references/workflow.md</code></pre>
+          <ul>
+            <li>Si quieres moverlo a otro repo, copia la skill y ajusta las rutas del wrapper o del entrypoint.</li>
+            <li>Manten el handoff <code class="inline">run -&gt; thread_id -&gt; resume</code> como contrato principal.</li>
+            <li>Conviene enlazar esta guia HTML como documento de arquitectura y limites del sistema.</li>
+          </ul>
+        </article>
+
+        <article class="tab-panel" data-panel="python" hidden>
+          <h3>Integracion Python en proceso</h3>
+          <p>Es la opcion correcta si tu host ya corre Python y quieres acoplar el agente sin shell ni contenedores.</p>
+          <pre><code>from deep_research_agent.domain.models import HumanDecisionType, ResearchRequest
+from deep_research_agent.runtime.service import ResearchRuntimeService
+from deep_research_agent.settings import AppSettings
+
+settings = AppSettings()
+service = ResearchRuntimeService(settings)
+
+started = await service.start_run(
+    ResearchRequest(query="Assess the AI infrastructure market"),
+    max_iterations=4,
+)
+
+if started.resume_supported:
+    completed = await service.resume_run(
+        thread_id=started.thread_id,
+        decision_type=HumanDecisionType.APPROVE,
+        summary="Proceed with the current plan",
+    )</code></pre>
+          <ul>
+            <li>Usa esta via si quieres reemplazar servicios, inyectar un bundle falso o envolver el runtime dentro de otra aplicacion.</li>
+            <li>Tambien es la mejor superficie para montar un servidor MCP sin shell intermedio.</li>
+          </ul>
+        </article>
+
+        <article class="tab-panel" data-panel="mcp" hidden>
+          <h3>Adaptador MCP recomendado</h3>
+          <p>Este repo no trae servidor MCP, pero el runtime ya expone el contrato adecuado. Lo mas directo es publicar tres herramientas y mapearlas a la CLI o al servicio Python.</p>
+          <pre><code>Herramientas MCP sugeridas
+
+research_run(
+  query,
+  audience="general",
+  objective=None,
+  constraints=[],
+  deliverable_format="markdown",
+  max_iterations=None,
+)
+
+research_list_pending(limit=20)
+
+research_resume(
+  thread_id,
+  decision,
+  summary="",
+  payload={},
+)</code></pre>
+          <ul>
+            <li>Si el host ya usa Python, llama a <code class="inline">ResearchRuntimeService</code> directamente.</li>
+            <li>Si el host esta aislado o corre en otro runtime, llama a la CLI o al wrapper de Compose y parsea el JSON.</li>
+            <li>Cuando la respuesta tenga <code class="inline">pending_human_input</code>, devuelvela al cliente MCP como un checkpoint visible, no como un error.</li>
+            <li>Preserva <code class="inline">thread_id</code> como identificador del hilo de investigacion y como clave de reanudacion.</li>
+          </ul>
+        </article>
+
+        <article class="tab-panel" data-panel="cli" hidden>
+          <h3>CLI local</h3>
+          <p>La CLI es la interfaz mas simple para scripts, wrappers propios o herramientas de build.</p>
+          <pre><code>deep-research-agent run --query "Assess LangGraph checkpointing"
+deep-research-agent list-pending --limit 20
+deep-research-agent resume --thread-id &lt;thread_id&gt; --decision approve --summary "Sufficient evidence"</code></pre>
+          <ul>
+            <li>Su salida JSON es estable y esta probada por la suite.</li>
+            <li>Es una buena base para un wrapper MCP, una extension o un job batch.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="panel" id="project-map">
+        <p class="section-kicker">Mapa del repo</p>
+        <h2>Donde esta cada cosa</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Ruta</th>
+              <th>Rol</th>
+              <th>Cuando tocarla</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code class="inline">pyproject.toml</code></td>
+              <td>Empaquetado, dependencias y entrypoint <code class="inline">deep-research-agent</code>.</td>
+              <td>Si cambian dependencias, extras opcionales o el script principal.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">src/deep_research_agent/cli.py</code></td>
+              <td>Interfaz de terminal y serializacion de resultados.</td>
+              <td>Si necesitas nuevos comandos o flags de entrada.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">src/deep_research_agent/domain/</code></td>
+              <td>Modelos del dominio, enums, TypedDict de estado y reducers.</td>
+              <td>Si cambia el contrato interno del flujo o las entidades persistidas.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">src/deep_research_agent/runtime/</code></td>
+              <td>Grafo LangGraph y fachada de ejecucion/reanudacion.</td>
+              <td>Si cambian nodos, rutas, checkpoints o mensajes operativos.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">src/deep_research_agent/services/</code></td>
+              <td>LLM, busqueda, extraccion y reporte.</td>
+              <td>Si agregas proveedores, mejoras heuristicas o cambias el formato final.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">src/deep_research_agent/persistence/</code></td>
+              <td>RunStore y checkpointers para SQLite/Postgres.</td>
+              <td>Si cambias backend, migraciones o politicas de persistencia.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">docker-compose.yml</code>, <code class="inline">Dockerfile</code>, <code class="inline">scripts/compose-agent.sh</code></td>
+              <td>Experiencia containerizada y bootstrap de Postgres.</td>
+              <td>Si la operacion en contenedores cambia o si integras mas servicios.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">.github/skills/deep-research-agent-compose/</code></td>
+              <td>Skill reutilizable para otro LLM.</td>
+              <td>Si cambian instrucciones, workflow o rutas del wrapper.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">docs/implementation.html</code></td>
+              <td>Documentacion interactiva del proyecto completo.</td>
+              <td>Si cambian superficies publicas, limites del MVP o rutas de integracion.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">tests/</code></td>
+              <td>Suite de contratos y comportamiento.</td>
+              <td>Si agregas funciones nuevas o cambias expectativas observables.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="map-grid" style="margin-top: 16px;">
+          <article class="map-card">
+            <strong>Arquitectura Docker Compose</strong>
+            <p>Dos servicios: <code class="inline">postgres</code> persiste metadata y checkpoints; <code class="inline">app</code> corre el CLI con variables de entorno derivadas de Compose.</p>
+          </article>
+          <article class="map-card">
+            <strong>Pruebas mas utiles para leer</strong>
+            <ul>
+              <li><code class="inline">tests/test_runtime_flow.py</code>: loop completo con dos reanudaciones.</li>
+              <li><code class="inline">tests/test_cli.py</code>: contrato de salida de la CLI.</li>
+              <li><code class="inline">tests/test_project_assets.py</code>: assets de Compose, skill y documentacion.</li>
+            </ul>
+          </article>
+          <article class="map-card">
+            <strong>Soporte a integraciones</strong>
+            <p><code class="inline">tests/support.py</code> incluye un bundle falso muy util para desarrollar wrappers o probar hosts propios sin pegarle a APIs reales.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="decisions">
+        <p class="section-kicker">Decisiones del MVP</p>
+        <h2>Decisiones técnicas tomadas</h2>
+        <div class="decision-grid">
+          <article class="card">
+            <h3>JSON estructurado para LLM</h3>
+            <p>Planificacion, reflexion y sintesis validan contra esquemas Pydantic. Eso hace el runtime mas predecible y mas facil de integrar.</p>
+          </article>
+          <article class="card">
+            <h3>Dos checkpoints humanos</h3>
+            <p>Se pausa antes de recuperar fuentes y antes de sintetizar. No es un agente completamente autonomo por diseño.</p>
+          </article>
+          <article class="card">
+            <h3>Persistencia por <code class="inline">thread_id</code></h3>
+            <p>Todo el flujo gira alrededor de un hilo reanudable. Esa misma clave simplifica skill, CLI, Compose y futuros adaptadores MCP.</p>
+          </article>
+          <article class="card">
+            <h3>Compose con wrapper</h3>
+            <p>El script <code class="inline">compose-agent.sh</code> evita condiciones de carrera de <code class="inline">docker compose run</code> y concentra el bootstrap.</p>
+          </article>
+          <article class="card">
+            <h3>Postgres por defecto en contenedores</h3>
+            <p>La experiencia containerizada prioriza persistencia durable. SQLite queda como backend ligero para local y tests.</p>
+          </article>
+          <article class="card">
+            <h3>Busqueda tolerante a credenciales faltantes</h3>
+            <p>Si faltan API keys, Tavily y Serper vuelven al fallback sin API. La idea es mantener el runtime util incluso con configuracion minima.</p>
+          </article>
+          <article class="card">
+            <h3>Heuristica simple de extraccion</h3>
+            <p>La extraccion usa HTML parser y overlap de keywords. Es suficiente para el MVP, pero es un candidato claro a mejora si integras fuentes internas o RAG.</p>
+          </article>
+          <article class="card">
+            <h3>Limites explicitados, no escondidos</h3>
+            <p>Proveedores enumerados pero no soportados, <code class="inline">firecrawl</code> y <code class="inline">runtime/placeholders.py</code> se mantienen visibles para marcar que falta por implementar.</p>
+          </article>
+        </div>
+        <p class="footer-note">
+          Si vas a extender el proyecto, la ruta mas segura es mantener estable la superficie externa
+          y cambiar por debajo los servicios o el grafo. Eso evita romper skills, wrappers de Compose y futuros adaptadores MCP.
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const moduleInfo = {
+      cli: {
+        path: "src/deep_research_agent/cli.py",
+        title: "cli.py",
+        summary: "Entrada principal del sistema. Construye ResearchRequest, carga AppSettings, invoca ResearchRuntimeService y emite JSON ordenado.",
+        contracts: [
+          "Subcomandos: run, resume y list-pending.",
+          "resume solo acepta decisiones declaradas en HumanDecisionType.",
+          "La salida se imprime con render_json y funciona como contrato estable para hosts externos."
+        ],
+        extension: [
+          "Agrega comandos si necesitas otra superficie publica.",
+          "Mantiene aqui flags nuevos antes de bajar al servicio.",
+          "Si cambias el JSON, asume impacto en skills, wrappers y scripts."
+        ],
+        notes: "Buen punto de integracion para wrappers ligeros o herramientas que no quieran importar Python del repo."
+      },
+      settings: {
+        path: "src/deep_research_agent/settings.py",
+        title: "settings.py",
+        summary: "Declara todo el contrato de entorno con Pydantic Settings y centraliza los defaults del MVP.",
+        contracts: [
+          "Prefijo DEEP_RESEARCH_ para todas las variables del agente.",
+          "checkpoint_db_url deriva automaticamente a SQLite o Postgres.",
+          "Presupuesta limites de tokens, contenido, notas, fuentes e iteraciones."
+        ],
+        extension: [
+          "Agrega aqui cualquier nueva variable de entorno del runtime.",
+          "Es el lugar correcto para validar rangos y defaults.",
+          "Si expones MCP o una API, este objeto sigue siendo el bootstrap base."
+        ],
+        notes: "Los tests de settings cubren parsing de enums y validaciones de enteros positivos."
+      },
+      "domain-models": {
+        path: "src/deep_research_agent/domain/models.py",
+        title: "domain/models.py",
+        summary: "Modelos Pydantic del dominio: request, tareas, fuentes, evidencia, decisiones humanas, reportes y estado observable del runtime.",
+        contracts: [
+          "RunStatus y HumanDecisionType gobiernan casi toda la superficie observable.",
+          "ResearchRequest es la entrada normalizada del sistema.",
+          "RuntimeCommandResult es el payload que consumen CLI, skills o wrappers."
+        ],
+        extension: [
+          "Toca este archivo si agregas nuevos tipos persistidos o visibles al usuario.",
+          "Mantener estos modelos coherentes simplifica las integraciones externas.",
+          "Un adaptador MCP normalmente serializa exactamente estos esquemas."
+        ],
+        notes: "Algunos enums anticipan proveedores futuros, pero el runtime actual no los implementa todos."
+      },
+      "domain-state": {
+        path: "src/deep_research_agent/domain/state.py",
+        title: "domain/state.py",
+        summary: "Describe el estado del grafo y como fusionar listas entre iteraciones, evitando perder tareas, fuentes, evidencia o citas.",
+        contracts: [
+          "ResearchGraphState es el contrato interno que fluye por LangGraph.",
+          "Los reducers anexan o actualizan entidades en vez de sobreescribirlas.",
+          "build_initial_state fija el punto de arranque consistente para todo run."
+        ],
+        extension: [
+          "Agrega aqui cualquier nuevo acumulador del grafo.",
+          "Si incorporas RAG, ranking o anotaciones humanas, probablemente nazcan aqui.",
+          "Una buena parte de los bugs de loop suelen ser errores de merge en esta capa."
+        ],
+        notes: "Esta capa explica por que el runtime puede iterar varias veces sin perder evidencia previa."
+      },
+      "runtime-graph": {
+        path: "src/deep_research_agent/runtime/graph.py",
+        title: "runtime/graph.py",
+        summary: "Implementa el flujo real con LangGraph: planear, pedir revision, investigar, reflejar, volver a pedir revision y sintetizar.",
+        contracts: [
+          "Usa interrupt() para pausar con contexto estructurado.",
+          "Tiene dos rutas condicionales criticas: despues de plan review y despues de sufficiency review.",
+          "Convierte resultados de busqueda en SourceRecord con IDs estables."
+        ],
+        extension: [
+          "Aqui se agregan nodos nuevos o cambios de routing.",
+          "Es el mejor punto para insertar herramientas internas, scoring o nuevos checkpoints humanos.",
+          "Si el comportamiento del agente cambia, casi seguro se toca este archivo."
+        ],
+        notes: "El loop sigue activo mientras reflection pida mas investigacion y no se alcance max_iterations."
+      },
+      "runtime-service": {
+        path: "src/deep_research_agent/runtime/service.py",
+        title: "runtime/service.py",
+        summary: "Fachada de ejecucion del runtime. Genera thread_id, arma estado inicial, crea stores/checkpointers y traduce el resultado del grafo a RuntimeCommandResult.",
+        contracts: [
+          "start_run inicia un thread nuevo y persiste el resultado inmediatamente.",
+          "resume_run rehidrata el hilo y envia Command(resume=...).",
+          "list_pending_runs devuelve los runs interrumpidos ordenados por actualizacion."
+        ],
+        extension: [
+          "Ideal para integraciones Python, MCP o APIs futuras.",
+          "Si necesitas telemetria o auditoria, suele agregarse aqui.",
+          "Tambien es el mejor punto para envolver errores del runtime en un contrato externo."
+        ],
+        notes: "Es la capa que convierte interrupciones internas de LangGraph en un payload JSON entendible por cualquier host."
+      },
+      persistence: {
+        path: "src/deep_research_agent/persistence/backends.py",
+        title: "persistence/backends.py",
+        summary: "Contiene RunStore para SQLite/Postgres y la fabrica de checkpointers para ambos backends.",
+        contracts: [
+          "Guarda latest_state, latest_interrupts, pending_human_input y last_message.",
+          "Postgres es opcional y depende de extras del proyecto.",
+          "SQLite usa rutas derivadas desde la URL y crea directorios si faltan."
+        ],
+        extension: [
+          "Se toca si agregas un backend nuevo o cambias la tabla runs.",
+          "Tambien es el punto natural para migraciones o politicas de retencion.",
+          "Si un host externo necesita leer estados pendientes, suele hablar con esta capa o con el servicio."
+        ],
+        notes: "Compose apunta a Postgres; tests y desarrollo local suelen correr mas rapido con SQLite."
+      },
+      llm: {
+        path: "src/deep_research_agent/services/llm.py",
+        title: "services/llm.py",
+        summary: "Planifica, reflexiona y sintetiza con respuestas estructuradas. OpenAI y Ollama comparten la misma interfaz abstracta.",
+        contracts: [
+          "Cada paso devuelve JSON validado contra un schema Pydantic.",
+          "OpenAI usa chat completions con response_format json_schema.",
+          "Ollama usa format con el schema generado por Pydantic."
+        ],
+        extension: [
+          "Agrega nuevos proveedores aqui si realmente quieres soportarlos de extremo a extremo.",
+          "Es buena idea mantener el contrato estructurado incluso si cambias de modelo.",
+          "Un host externo puede reemplazar este servicio inyectando su propio bundle."
+        ],
+        notes: "La suite deja claro que enums mas amplios no implican soporte real del runtime."
+      },
+      search: {
+        path: "src/deep_research_agent/services/search.py",
+        title: "services/search.py",
+        summary: "Resuelve la busqueda web, limpia URLs y genera hashes estables para tareas o fuentes.",
+        contracts: [
+          "none usa DuckDuckGo HTML como fallback sin API.",
+          "Tavily y Serper devuelven SearchResult normalizado.",
+          "firecrawl genera un error explicito porque no esta soportado hoy."
+        ],
+        extension: [
+          "Punto natural para agregar nuevos proveedores o un backend interno de documentos.",
+          "Si integras una base privada por MCP o RAG, probablemente reemplaces esta capa.",
+          "canonicalize_url y stable_hash ya resuelven buena parte del dedupe."
+        ],
+        notes: "La deduplicacion por canonical_url afecta tanto el loop como el reporte final."
+      },
+      extractor: {
+        path: "src/deep_research_agent/services/extraction.py",
+        title: "services/extraction.py",
+        summary: "Convierte contenido bruto o HTML en EvidenceRecord usando parsing sencillo y overlap de keywords.",
+        contracts: [
+          "Si la fuente trae raw_content o content en metadata, no hace fetch remoto adicional.",
+          "Recorta el texto segun max_content_chars_per_source.",
+          "Devuelve hasta dos pasajes con claim, excerpt, rationale y confidence."
+        ],
+        extension: [
+          "Buen candidato para mejorar con embeddings, extractores semanticos o normalizacion especifica por fuente.",
+          "Si quieres fuentes internas, puedes inyectar content directamente y evitar HTTP.",
+          "Tambien es el lugar para controlar calidad o trazabilidad de evidencia."
+        ],
+        notes: "Su simplicidad es deliberada: el MVP privilegia debuggability sobre sofisticacion."
+      },
+      reporting: {
+        path: "src/deep_research_agent/services/reporting.py",
+        title: "services/reporting.py",
+        summary: "Toma el reporte sintetizado y lo convierte en Markdown final con secciones, markers de cita y lista de fuentes.",
+        contracts: [
+          "Ordena las fuentes de forma estable antes de asignar [1], [2], [3].",
+          "Completa markers faltantes en los findings si el LLM no los incluyo en el cuerpo.",
+          "Devuelve title, markdown, sections, citations y final_status."
+        ],
+        extension: [
+          "Se toca si quieres HTML, PDF, estilos o formatos adicionales.",
+          "Mantener la separacion con la sintesis estructurada facilita pruebas y reutilizacion.",
+          "Tambien puede usarse solo, si otra pipeline produce SynthesizedReport."
+        ],
+        notes: "Las pruebas de report formatting cubren el orden de citas y la composicion del Markdown."
+      },
+      delivery: {
+        path: "docker-compose.yml + Dockerfile + scripts/compose-agent.sh + .github/skills/deep-research-agent-compose/",
+        title: "Docker Compose + skill",
+        summary: "Empaquetado y operacion externa del runtime para que el agente funcione como herramienta en otros entornos.",
+        contracts: [
+          "Compose define postgres y app con variables de entorno coherentes.",
+          "compose-agent.sh concentra bootstrap, run, resume, list-pending, shell, logs y down.",
+          "La skill del repo instruye a otro LLM para operar el workflow containerizado."
+        ],
+        extension: [
+          "Aqui se trabaja si el agente va a vivir como servicio operativo en otro host.",
+          "Tambien es donde conviene adaptar instrucciones para otra org o repositorio.",
+          "Si montas un MCP server en contenedores, esta capa puede seguir siendo el bootstrap base."
+        ],
+        notes: "Es la integracion externa mas madura del proyecto y la que menos depende del entorno del host."
+      },
+      tests: {
+        path: "tests/",
+        title: "tests/",
+        summary: "La suite fija el contrato observable del proyecto: loop completo, CLI, settings, persistence, formateo y assets operativos.",
+        contracts: [
+          "test_runtime_flow cubre start -> interrupt -> resume -> interrupt -> resume -> complete.",
+          "test_cli garantiza la forma de la salida JSON y las transiciones visibles.",
+          "tests/support.py aporta un bundle falso reutilizable para desarrollo."
+        ],
+        extension: [
+          "Lee primero estos tests antes de cambiar contratos publicos.",
+          "Si agregas integraciones o nuevos nodos, esta carpeta deberia crecer contigo.",
+          "Para un MCP adapter, conviene clonar el patron de fake bundle de support.py."
+        ],
+        notes: "En este repo, los tests cuentan la historia del producto casi tan bien como el codigo fuente."
+      },
+      placeholders: {
+        path: "src/deep_research_agent/runtime/placeholders.py",
+        title: "runtime/placeholders.py",
+        summary: "Archivo residual con nodos que lanzan NotImplementedError y documentan una frontera de implementacion anterior.",
+        contracts: [
+          "No participa del build actual del grafo.",
+          "Sirve como recordatorio de nodos genericos reservados.",
+          "No debe confundirse con la implementacion real del runtime."
+        ],
+        extension: [
+          "Puedes borrarlo si dejas claro en el repo que el flujo real vive en runtime/graph.py.",
+          "Tambien puede reciclarse como lugar para prototipos futuros.",
+          "Si alguien se pierde leyendo el repo, conviene aclararlo en docs antes que reutilizarlo sin criterio."
+        ],
+        notes: "Se documenta aqui para evitar falsas expectativas sobre capacidades aun no expuestas."
+      }
+    };
+
+    const flowSteps = [
+      {
+        phase: "Fase 1",
+        title: "Entrada y construccion del request",
+        summary: "La ejecucion arranca en CLI o en un host Python. Se construye ResearchRequest, se cargan settings y se prepara el runtime.",
+        io: [
+          "Entrada: query, audience, objective, constraints y deliverable_format.",
+          "Salida: ResearchRequest + AppSettings + max_iterations efectivo.",
+          "Aun no existe interrupt ni evidencia."
+        ],
+        controls: [
+          "La CLI parsea banderas y serializa resultados.",
+          "AppSettings resuelve backend, proveedor y limites.",
+          "ResearchRuntimeService genera thread_id nuevo para start_run."
+        ],
+        code: "deep-research-agent run --query \"Assess LangGraph checkpointing\"\n# o desde Python\nstarted = await service.start_run(ResearchRequest(query=\"...\"), max_iterations=4)"
+      },
+      {
+        phase: "Fase 2",
+        title: "Planificacion y aprobacion del plan",
+        summary: "El nodo plan_research pide un plan estructurado al LLM y prepare_plan_review interrumpe el grafo antes de buscar fuentes.",
+        io: [
+          "Entrada: request + tareas previas + decisiones humanas anteriores.",
+          "Salida: plan_title, plan_summary, plan_tasks y report_sections planeadas.",
+          "Interrupt: HumanReviewRequest con review_kind=plan_approval."
+        ],
+        controls: [
+          "Decisiones permitidas: approve, clarify, stop.",
+          "clarify reescribe el request y vuelve a planificar.",
+          "stop cancela el run sin entrar al loop de investigacion."
+        ],
+        code: "plan_research -> prepare_plan_review -> interrupt(...)\n# pending_human_input contiene el contexto necesario para revisar el plan"
+      },
+      {
+        phase: "Fase 3",
+        title: "Loop de investigacion",
+        summary: "Tras la aprobacion del plan, el runtime entra al loop begin_iteration -> search_sources -> extract_evidence -> reflect_research.",
+        io: [
+          "Entrada: plan_tasks activas, request, budgets y provider de busqueda.",
+          "Salida: sources deduplicadas, evidencia incremental y notas de trazabilidad.",
+          "reflection puede cubrir tareas o proponer follow_up_tasks."
+        ],
+        controls: [
+          "max_sources_per_task limita la recuperacion por tarea.",
+          "max_content_chars_per_source controla la extraccion.",
+          "Si reflection necesita mas trabajo y queda margen de iteraciones, el loop continua."
+        ],
+        code: "begin_iteration\n  -> search_sources\n  -> extract_evidence\n  -> reflect_research\n# el estado conserva tareas, fuentes y evidencia entre vueltas"
+      },
+      {
+        phase: "Fase 4",
+        title: "Revision de suficiencia",
+        summary: "Cuando reflection ya no puede seguir sola o se alcanza la guarda de iteraciones, el sistema pide revision humana antes de sintetizar.",
+        io: [
+          "Entrada: ultima reflection, resumen de evidencia, iteration_count y plan actual.",
+          "Salida: pending_human_input con review_kind=sufficiency_review.",
+          "El usuario decide si ya alcanza, si sigue o si se detiene."
+        ],
+        controls: [
+          "Decisiones permitidas: approve, continue, stop.",
+          "Si iteration_count >= max_iterations, approve y synthesize convergen en el mismo camino final.",
+          "continue agrega follow-up tasks humanas y vuelve al loop."
+        ],
+        code: "prepare_sufficiency_review -> interrupt(...)\n# si la guarda se agota, el prompt explicita que ya no quedan iteraciones libres"
+      },
+      {
+        phase: "Fase 5",
+        title: "Resume y control humano",
+        summary: "resume_run rehidrata el thread persistido y transforma la decision humana en Command(resume=...).",
+        io: [
+          "Entrada: thread_id, decision_type, summary y payload opcional.",
+          "Salida: nuevo RuntimeCommandResult con status actualizado.",
+          "Si sigue interrumpido, resume_supported permanece true."
+        ],
+        controls: [
+          "RunNotFoundError se lanza si el hilo no existe.",
+          "HumanDecision.from_resume_payload normaliza payloads flexibles.",
+          "El servicio actualiza RunStore despues de cada resume."
+        ],
+        code: "completed = await service.resume_run(\n  thread_id=started.thread_id,\n  decision_type=HumanDecisionType.APPROVE,\n  summary=\"Sufficient evidence\",\n)"
+      },
+      {
+        phase: "Fase 6",
+        title: "Sintesis y reporte final",
+        summary: "synthesize_report llama al LLM para producir SynthesizedReport y luego ReportFormatter construye el Markdown final con citas ordenadas.",
+        io: [
+          "Entrada: plan final, sources, evidence_summary y reflexiones previas.",
+          "Salida: final_report_title, final_report_markdown, report_sections y citation_records.",
+          "status pasa a completed y pending_human_input queda en null."
+        ],
+        controls: [
+          "El formatter inyecta markers [1], [2], ... si faltan.",
+          "Las secciones Executive Summary y Methodology siempre se materializan.",
+          "La lista Sources se ordena por URL canonica y titulo."
+        ],
+        code: "formatted = report_formatter.format(report=synthesized, sources=state.get('sources', []))\n# final_report_markdown queda listo para publicar o reenviar"
+      },
+      {
+        phase: "Fase 7",
+        title: "Persistencia y observabilidad externa",
+        summary: "Cada comando persiste un snapshot observable del run. Por eso list-pending puede funcionar sin conocer el grafo interno.",
+        io: [
+          "Entrada: RunRecord con status, latest_state, latest_interrupts y last_message.",
+          "Salida: runs interrumpidos listados por updated_at desc.",
+          "El host externo solo necesita consumir JSON y recordar thread_id."
+        ],
+        controls: [
+          "SQLite y Postgres comparten la misma semantica de RunStore.",
+          "Compose prefiere Postgres para que los checkpoints sobrevivan a contenedores efimeros.",
+          "list_pending es la vista mas simple para colas humanas o dashboards."
+        ],
+        code: "deep-research-agent list-pending --limit 20\n# devuelve { count, runs: [...] } con thread_id, status y pending_human_input"
+      }
+    ];
+
+    const useCases = {
+      market: {
+        fit: "Escenario clasico",
+        title: "Market intelligence",
+        summary: "Ideal para analizar mercados, competencia, tendencias y riesgos operativos con dos validaciones humanas antes del reporte final.",
+        integration: "Docker Compose o CLI",
+        provider: "OpenAI u Ollama",
+        surface: "CLI, search service y ReportFormatter",
+        list: [
+          "Encaja bien cuando la pregunta inicial es abierta pero necesita trazabilidad.",
+          "La pausa de plan approval sirve para corregir el enfoque antes de gastar retrieval.",
+          "La pausa de sufficiency review sirve para evitar sintesis prematura."
+        ],
+        code: "./scripts/compose-agent.sh run --query \"Assess the AI infrastructure market\""
+      },
+      diligence: {
+        fit: "Escenario tecnico",
+        title: "Due diligence tecnica",
+        summary: "Sirve para comparar proveedores, arquitectura, riesgos de despliegue y dependencias, especialmente cuando quieres follow-up tasks derivados de la reflexion.",
+        integration: "Python embebido o CLI",
+        provider: "OpenAI con JSON schema estricto",
+        surface: "runtime/service.py + runtime/graph.py",
+        list: [
+          "La reflection genera tareas hijas cuando falta evidencia critica.",
+          "Puedes endurecer constraints para pedir criterios de exito mas concretos.",
+          "Conviene persistir en Postgres si el analisis cruza varias sesiones humanas."
+        ],
+        code: "started = await service.start_run(ResearchRequest(query=\"Compare vector DB durability tradeoffs\"), max_iterations=5)"
+      },
+      internal: {
+        fit: "Escenario de integracion",
+        title: "Sintesis de fuentes internas",
+        summary: "El MVP no trae un backend interno dedicado, pero el extractor ya puede trabajar con contenido inyectado en metadata sin fetch adicional.",
+        integration: "Python embebido",
+        provider: "Cualquiera de los soportados",
+        surface: "services/search.py o bundle custom",
+        list: [
+          "Puedes reemplazar SearchService por uno que devuelva SearchResult con content ya resuelto.",
+          "El extractor respeta raw_content/content y evita llamadas HTTP si esos campos existen.",
+          "Es una buena base para integrar RAG propio o un catalogo documental via MCP."
+        ],
+        code: "# estrategia comun\ncustom_bundle = ResearchServiceBundle(llm=..., search=my_internal_search, extractor=ContentExtractor(settings), report_formatter=ReportFormatter())"
+      },
+      governed: {
+        fit: "Escenario gobernado",
+        title: "Flujos gobernados o auditables",
+        summary: "La combinacion de thread_id, estado persistido y checkpoints humanos hace que el repo sea util para procesos con aprobacion intermedia o auditoria posterior.",
+        integration: "MCP adapter o Python embebido",
+        provider: "OpenAI u Ollama segun politica interna",
+        surface: "RuntimeCommandResult + RunStore",
+        list: [
+          "list-pending puede alimentar una cola humana externa o un panel de aprobaciones.",
+          "last_message y latest_interrupts facilitan trazabilidad del hilo.",
+          "Un server MCP puede exponer exactamente las tres operaciones del runtime y dejar la gobernanza en el host."
+        ],
+        code: "research_list_pending(limit=20)\n# devolver thread_id + pending_human_input a un coordinador humano"
+      }
+    };
+
+    const moduleCards = Array.from(document.querySelectorAll(".module-card"));
+    const filterButtons = Array.from(document.querySelectorAll(".filter-button"));
+    const moduleSearch = document.getElementById("module-search");
+    const moduleEmpty = document.getElementById("module-empty");
+
+    const modulePath = document.getElementById("module-path");
+    const moduleTitle = document.getElementById("module-title");
+    const moduleSummary = document.getElementById("module-summary");
+    const moduleContracts = document.getElementById("module-contracts");
+    const moduleExtension = document.getElementById("module-extension");
+    const moduleNotes = document.getElementById("module-notes");
+
+    const flowButtons = Array.from(document.querySelectorAll(".step"));
+    const flowPhase = document.getElementById("flow-phase");
+    const flowTitle = document.getElementById("flow-title");
+    const flowSummary = document.getElementById("flow-summary");
+    const flowIo = document.getElementById("flow-io");
+    const flowControls = document.getElementById("flow-controls");
+    const flowCode = document.getElementById("flow-code");
+
+    const useCaseButtons = Array.from(document.querySelectorAll(".use-case-button"));
+    const caseFit = document.getElementById("case-fit");
+    const caseTitle = document.getElementById("case-title");
+    const caseSummary = document.getElementById("case-summary");
+    const caseIntegration = document.getElementById("case-integration");
+    const caseProvider = document.getElementById("case-provider");
+    const caseSurface = document.getElementById("case-surface");
+    const caseList = document.getElementById("case-list");
+    const caseCode = document.getElementById("case-code");
+
+    const tabs = Array.from(document.querySelectorAll(".tab"));
+    const panels = Array.from(document.querySelectorAll(".tab-panel"));
+
+    let activeFilter = "all";
+    let activeModule = "cli";
+
+    function fillList(target, items) {
+      target.innerHTML = "";
+      items.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        target.appendChild(li);
+      });
+    }
+
+    function setActiveModule(key) {
+      const data = moduleInfo[key];
+      if (!data) {
+        return;
+      }
+      activeModule = key;
+      moduleCards.forEach((card) => {
+        card.classList.toggle("is-active", card.dataset.module === key);
+      });
+      modulePath.textContent = data.path;
+      moduleTitle.textContent = data.title;
+      moduleSummary.textContent = data.summary;
+      fillList(moduleContracts, data.contracts);
+      fillList(moduleExtension, data.extension);
+      moduleNotes.textContent = data.notes;
+    }
+
+    function applyModuleFilter() {
+      const searchTerm = moduleSearch.value.trim().toLowerCase();
+      let visibleCount = 0;
+
+      moduleCards.forEach((card) => {
+        const matchesFilter = activeFilter === "all" || card.dataset.group === activeFilter;
+        const haystack = `${card.dataset.keywords} ${card.textContent}`.toLowerCase();
+        const matchesSearch = !searchTerm || haystack.includes(searchTerm);
+        const visible = matchesFilter && matchesSearch;
+        card.hidden = !visible;
+        if (visible) {
+          visibleCount += 1;
+        }
+      });
+
+      moduleEmpty.hidden = visibleCount !== 0;
+
+      const activeCardVisible = moduleCards.some((card) => card.dataset.module === activeModule && !card.hidden);
+      if (!activeCardVisible) {
+        const firstVisible = moduleCards.find((card) => !card.hidden);
+        if (firstVisible) {
+          setActiveModule(firstVisible.dataset.module);
+        }
+      }
+    }
+
+    function setFlowStep(index) {
+      const step = flowSteps[index];
+      if (!step) {
+        return;
+      }
+      flowButtons.forEach((button) => {
+        button.classList.toggle("is-active", Number(button.dataset.step) === index);
+      });
+      flowPhase.textContent = step.phase;
+      flowTitle.textContent = step.title;
+      flowSummary.textContent = step.summary;
+      fillList(flowIo, step.io);
+      fillList(flowControls, step.controls);
+      flowCode.textContent = step.code;
+    }
+
+    function setUseCase(key) {
+      const data = useCases[key];
+      if (!data) {
+        return;
+      }
+      useCaseButtons.forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.case === key);
+      });
+      caseFit.textContent = data.fit;
+      caseTitle.textContent = data.title;
+      caseSummary.textContent = data.summary;
+      caseIntegration.textContent = data.integration;
+      caseProvider.textContent = data.provider;
+      caseSurface.textContent = data.surface;
+      fillList(caseList, data.list);
+      caseCode.textContent = data.code;
+    }
+
+    function setTab(key) {
+      tabs.forEach((tab) => {
+        tab.classList.toggle("is-active", tab.dataset.tab === key);
+      });
+      panels.forEach((panel) => {
+        panel.hidden = panel.dataset.panel !== key;
+      });
+    }
+
+    moduleCards.forEach((card) => {
+      card.addEventListener("click", () => setActiveModule(card.dataset.module));
+    });
+
+    filterButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        activeFilter = button.dataset.filter;
+        filterButtons.forEach((candidate) => {
+          candidate.classList.toggle("is-active", candidate === button);
+        });
+        applyModuleFilter();
+      });
+    });
+
+    moduleSearch.addEventListener("input", applyModuleFilter);
+
+    flowButtons.forEach((button) => {
+      button.addEventListener("click", () => setFlowStep(Number(button.dataset.step)));
+    });
+
+    useCaseButtons.forEach((button) => {
+      button.addEventListener("click", () => setUseCase(button.dataset.case));
+    });
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => setTab(tab.dataset.tab));
+    });
+
+    setActiveModule("cli");
+    applyModuleFilter();
+    setFlowStep(0);
+    setUseCase("market");
+    setTab("compose");
+  </script>
+</body>
+</html>

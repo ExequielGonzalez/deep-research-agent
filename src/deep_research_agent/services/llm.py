@@ -1,0 +1,363 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from abc import ABC, abstractmethod
+from typing import Any, TypeVar
+from urllib import error, request as urllib_request
+
+from pydantic import BaseModel, ValidationError
+
+from deep_research_agent.domain.models import (
+    HumanDecision,
+    PlanTask,
+    ReflectionOutput,
+    ResearchPlan,
+    ResearchRequest,
+    SourceRecord,
+    SynthesizedReport,
+)
+from deep_research_agent.settings import AppSettings
+
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+_MAX_TASKS_IN_CONTEXT = 12
+_MAX_SOURCES_IN_CONTEXT = 12
+_MAX_EVIDENCE_IN_CONTEXT = 24
+_MAX_TEXT_FIELD_CHARS = 320
+
+
+class ProviderConfigurationError(RuntimeError):
+    """Raised when a provider or provider configuration is unsupported."""
+
+
+def _truncate_text(value: Any, *, limit: int = _MAX_TEXT_FIELD_CHARS) -> Any:
+    if not isinstance(value, str):
+        return value
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3].rstrip()}..."
+
+
+def _request_context(request: ResearchRequest) -> dict[str, Any]:
+    return {
+        "query": _truncate_text(request.query),
+        "audience": _truncate_text(request.audience),
+        "objective": _truncate_text(request.objective),
+        "constraints": [_truncate_text(item) for item in request.constraints[:6]],
+        "deliverable_format": request.deliverable_format,
+    }
+
+
+def _decision_context(decision: HumanDecision) -> dict[str, Any]:
+    return {
+        "decision_type": decision.decision_type.value,
+        "summary": _truncate_text(decision.summary),
+        "payload": decision.payload,
+    }
+
+
+def _task_context(task: PlanTask) -> dict[str, Any]:
+    return {
+        "task_id": task.task_id,
+        "title": _truncate_text(task.title),
+        "description": _truncate_text(task.description),
+        "search_query": _truncate_text(task.search_query),
+        "section_title": _truncate_text(task.section_title),
+        "status": task.status.value,
+        "priority": task.priority,
+        "parent_task_id": task.parent_task_id,
+        "success_criteria": [_truncate_text(item) for item in task.success_criteria[:3]],
+    }
+
+
+def _source_context(source: SourceRecord) -> dict[str, Any]:
+    return {
+        "source_id": source.source_id,
+        "title": _truncate_text(source.title),
+        "url": source.url,
+        "canonical_url": source.canonical_url,
+        "provider": source.provider.value,
+        "source_type": source.source_type.value,
+        "task_ids": source.task_ids,
+        "snippet": _truncate_text(source.snippet),
+        "published_at": source.published_at.isoformat() if source.published_at else None,
+    }
+
+
+def _evidence_context(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "evidence_id": item.get("evidence_id"),
+        "source_id": item.get("source_id"),
+        "source_title": _truncate_text(item.get("source_title")),
+        "supports_task_id": item.get("supports_task_id"),
+        "claim": _truncate_text(item.get("claim")),
+        "excerpt": _truncate_text(item.get("excerpt")),
+        "confidence": item.get("confidence"),
+    }
+
+
+def _reflection_context(reflection: ReflectionOutput) -> dict[str, Any]:
+    return {
+        "summary": _truncate_text(reflection.summary),
+        "knowledge_gaps": [_truncate_text(item) for item in reflection.knowledge_gaps[:6]],
+        "covered_task_ids": reflection.covered_task_ids,
+        "needs_more_research": reflection.needs_more_research,
+        "needs_human_input": reflection.needs_human_input,
+        "confidence": reflection.confidence,
+        "follow_up_tasks": [
+            {
+                "title": _truncate_text(task.title),
+                "description": _truncate_text(task.description),
+                "search_query": _truncate_text(task.search_query),
+                "section_title": _truncate_text(task.section_title),
+                "parent_task_id": task.parent_task_id,
+                "priority": task.priority,
+                "success_criteria": [_truncate_text(item) for item in task.success_criteria[:3]],
+            }
+            for task in reflection.follow_up_tasks[:6]
+        ],
+    }
+
+
+def _compact_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+class ResearchLLMService(ABC):
+    @abstractmethod
+    async def plan_research(
+        self,
+        *,
+        request: ResearchRequest,
+        prior_tasks: list[PlanTask],
+        human_decisions: list[HumanDecision],
+    ) -> ResearchPlan: ...
+
+    @abstractmethod
+    async def reflect_research(
+        self,
+        *,
+        request: ResearchRequest,
+        plan_tasks: list[PlanTask],
+        sources: list[SourceRecord],
+        evidence_summary: list[dict[str, Any]],
+        iteration_count: int,
+        max_iterations: int,
+    ) -> ReflectionOutput: ...
+
+    @abstractmethod
+    async def synthesize_report(
+        self,
+        *,
+        request: ResearchRequest,
+        plan_title: str | None,
+        plan_summary: str | None,
+        plan_tasks: list[PlanTask],
+        sources: list[SourceRecord],
+        evidence_summary: list[dict[str, Any]],
+        reflections: list[ReflectionOutput],
+    ) -> SynthesizedReport: ...
+
+
+class JSONSchemaLLMService(ResearchLLMService, ABC):
+    def __init__(self, *, model_name: str):
+        self._model_name = model_name
+
+    async def plan_research(
+        self,
+        *,
+        request: ResearchRequest,
+        prior_tasks: list[PlanTask],
+        human_decisions: list[HumanDecision],
+    ) -> ResearchPlan:
+        context = {
+            "request": _request_context(request),
+            "prior_tasks": [_task_context(task) for task in prior_tasks[:_MAX_TASKS_IN_CONTEXT]],
+            "human_decisions": [_decision_context(decision) for decision in human_decisions[-3:]],
+        }
+        return await self._generate_structured(
+            ResearchPlan,
+            system_prompt=(
+                "You are a deterministic research planner. Produce a concise, executable plan for a deep research workflow. "
+                "Return only structured JSON matching the schema. Tasks must be specific, evidence-oriented, and suitable for web research."
+            ),
+            user_prompt=(
+                "Normalize the research request into a title, normalized_query, short plan_summary, and 2-5 plan tasks. "
+                "Each task must include title, description, search_query, optional section_title, priority, and success_criteria.\n"
+                f"Context:\n{_compact_json(context)}"
+            ),
+        )
+
+    async def reflect_research(
+        self,
+        *,
+        request: ResearchRequest,
+        plan_tasks: list[PlanTask],
+        sources: list[SourceRecord],
+        evidence_summary: list[dict[str, Any]],
+        iteration_count: int,
+        max_iterations: int,
+    ) -> ReflectionOutput:
+        context = {
+            "request": _request_context(request),
+            "iteration_count": iteration_count,
+            "max_iterations": max_iterations,
+            "plan_tasks": [_task_context(task) for task in plan_tasks[:_MAX_TASKS_IN_CONTEXT]],
+            "sources": [_source_context(source) for source in sources[:_MAX_SOURCES_IN_CONTEXT]],
+            "evidence_summary": [_evidence_context(item) for item in evidence_summary[:_MAX_EVIDENCE_IN_CONTEXT]],
+        }
+        return await self._generate_structured(
+            ReflectionOutput,
+            system_prompt=(
+                "You are a research reflection engine. Evaluate evidence sufficiency task by task. "
+                "Return only structured JSON matching the schema. Keep covered_task_ids factual and propose follow_up_tasks only when evidence is missing."
+            ),
+            user_prompt=(
+                "Assess whether more research is needed. If evidence is sufficient, set needs_more_research to false and set needs_human_input to true. "
+                "If more research is needed, explain the gaps and propose targeted follow_up_tasks.\n"
+                f"Context:\n{_compact_json(context)}"
+            ),
+        )
+
+    async def synthesize_report(
+        self,
+        *,
+        request: ResearchRequest,
+        plan_title: str | None,
+        plan_summary: str | None,
+        plan_tasks: list[PlanTask],
+        sources: list[SourceRecord],
+        evidence_summary: list[dict[str, Any]],
+        reflections: list[ReflectionOutput],
+    ) -> SynthesizedReport:
+        context = {
+            "request": _request_context(request),
+            "plan_title": _truncate_text(plan_title),
+            "plan_summary": _truncate_text(plan_summary),
+            "plan_tasks": [_task_context(task) for task in plan_tasks[:_MAX_TASKS_IN_CONTEXT]],
+            "sources": [_source_context(source) for source in sources[:_MAX_SOURCES_IN_CONTEXT]],
+            "evidence_summary": [_evidence_context(item) for item in evidence_summary[:_MAX_EVIDENCE_IN_CONTEXT]],
+            "reflections": [_reflection_context(reflection) for reflection in reflections[-3:]],
+        }
+        return await self._generate_structured(
+            SynthesizedReport,
+            system_prompt=(
+                "You are the final report writer for a deep research workflow. Use only the supplied evidence. "
+                "Return structured JSON matching the schema. Each finding section must include supporting source_ids."
+            ),
+            user_prompt=(
+                "Write a Markdown-ready report outline with title, executive_summary, methodology, findings, optional conclusion, and final_status. "
+                "Do not invent source_ids.\n"
+                f"Context:\n{_compact_json(context)}"
+            ),
+        )
+
+    @abstractmethod
+    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT: ...
+
+
+class OpenAIResearchLLMService(JSONSchemaLLMService):
+    def __init__(self, *, api_key: str, model_name: str, base_url: str):
+        super().__init__(model_name=model_name)
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+
+    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
+        payload = {
+            "model": self._model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "strict": True,
+                    "schema": schema.model_json_schema(),
+                },
+            },
+        }
+        response = await _http_json_request(
+            f"{self._base_url}/chat/completions",
+            payload,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+        )
+        try:
+            raw_content = response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderConfigurationError("OpenAI response did not contain structured message content.") from exc
+        return _parse_schema_response(schema, raw_content)
+
+
+class OllamaResearchLLMService(JSONSchemaLLMService):
+    def __init__(self, *, model_name: str, base_url: str):
+        super().__init__(model_name=model_name)
+        self._base_url = base_url.rstrip("/")
+
+    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
+        payload = {
+            "model": self._model_name,
+            "stream": False,
+            "format": schema.model_json_schema(),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        response = await _http_json_request(f"{self._base_url}/api/chat", payload)
+        try:
+            raw_content = response["message"]["content"]
+        except (KeyError, TypeError) as exc:
+            raise ProviderConfigurationError("Ollama response did not contain structured message content.") from exc
+        return _parse_schema_response(schema, raw_content)
+
+
+async def _http_json_request(url: str, payload: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
+    request_headers = {"Content-Type": "application/json", **(headers or {})}
+
+    def _send() -> dict[str, Any]:
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib_request.Request(url, data=body, headers=request_headers, method="POST")
+        try:
+            with urllib_request.urlopen(req, timeout=60) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:  # pragma: no cover - network/provider behavior
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise ProviderConfigurationError(f"Provider request failed with HTTP {exc.code}: {detail}") from exc
+        except error.URLError as exc:  # pragma: no cover - network/provider behavior
+            raise ProviderConfigurationError(f"Provider request failed: {exc.reason}") from exc
+
+    return await asyncio.to_thread(_send)
+
+
+
+def _parse_schema_response(schema: type[SchemaT], raw_content: Any) -> SchemaT:
+    if isinstance(raw_content, list):
+        raw_content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in raw_content)
+    if not isinstance(raw_content, str):
+        raise ProviderConfigurationError("Provider returned non-string structured content.")
+    try:
+        return schema.model_validate_json(raw_content)
+    except ValidationError as exc:
+        raise ProviderConfigurationError(f"Provider returned invalid structured JSON for {schema.__name__}.") from exc
+
+
+
+def build_llm_service(settings: AppSettings) -> ResearchLLMService:
+    if settings.model_provider.value == "openai":
+        if not settings.openai_api_key:
+            raise ProviderConfigurationError("OpenAI provider requires DEEP_RESEARCH_OPENAI_API_KEY.")
+        return OpenAIResearchLLMService(
+            api_key=settings.openai_api_key,
+            model_name=settings.model_name,
+            base_url=settings.openai_base_url,
+        )
+    if settings.model_provider.value == "ollama":
+        return OllamaResearchLLMService(model_name=settings.model_name, base_url=settings.ollama_base_url)
+    raise ProviderConfigurationError(
+        f"Model provider `{settings.model_provider.value}` is not supported by the MVP runtime. "
+        "Supported providers: openai, ollama."
+    )

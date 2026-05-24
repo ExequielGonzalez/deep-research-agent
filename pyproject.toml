@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep-research-agent"
+version = "0.1.0"
+description = "LangGraph-based deep research agent foundation"
+readme = "research-context.md"
+requires-python = ">=3.12"
+authors = [{ name = "GitHub Copilot" }]
+dependencies = [
+  "aiosqlite==0.21.0",
+  # Pin LangGraph/checkpointer APIs as a tested set. This code relies on
+  # StateGraph + interrupt()/Command(resume=...) + async saver factories.
+  "langgraph==1.2.1",
+  "langgraph-checkpoint-sqlite==3.1.0",
+  "pydantic==2.11.4",
+  "pydantic-settings==2.9.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.5",
+  "pytest-asyncio==0.25.3",
+]
+postgres = [
+  "asyncpg>=0.29,<1",
+  "langgraph-checkpoint-postgres==3.1.0",
+]
+
+[project.scripts]
+deep-research-agent = "deep_research_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

@@ -1,0 +1,2 @@
+[console_scripts]
+deep-research-agent = deep_research_agent.cli:main
