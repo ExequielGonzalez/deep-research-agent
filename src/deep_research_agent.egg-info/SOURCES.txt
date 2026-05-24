@@ -16,6 +16,7 @@ src/deep_research_agent/domain/state.py
 src/deep_research_agent/persistence/__init__.py
 src/deep_research_agent/persistence/backends.py
 src/deep_research_agent/runtime/__init__.py
+src/deep_research_agent/runtime/events.py
 src/deep_research_agent/runtime/graph.py
 src/deep_research_agent/runtime/placeholders.py
 src/deep_research_agent/runtime/service.py
@@ -24,10 +25,16 @@ src/deep_research_agent/services/extraction.py
 src/deep_research_agent/services/llm.py
 src/deep_research_agent/services/reporting.py
 src/deep_research_agent/services/search.py
+src/deep_research_agent/web/__init__.py
+src/deep_research_agent/web/app.py
+src/deep_research_agent/web/ui.py
 tests/test_cli.py
+tests/test_compose_integration.py
 tests/test_persistence.py
+tests/test_project_assets.py
 tests/test_report_formatting.py
 tests/test_runtime_flow.py
 tests/test_services.py
 tests/test_settings.py
 tests/test_state.py
+tests/test_web_app.py

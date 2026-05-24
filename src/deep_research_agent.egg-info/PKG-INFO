@@ -6,11 +6,14 @@ Author: GitHub Copilot
 Requires-Python: >=3.12
 Description-Content-Type: text/markdown
 Requires-Dist: aiosqlite==0.21.0
+Requires-Dist: fastapi==0.115.12
 Requires-Dist: langgraph==1.2.1
 Requires-Dist: langgraph-checkpoint-sqlite==3.1.0
 Requires-Dist: pydantic==2.11.4
 Requires-Dist: pydantic-settings==2.9.1
+Requires-Dist: uvicorn==0.34.2
 Provides-Extra: dev
+Requires-Dist: httpx==0.28.1; extra == "dev"
 Requires-Dist: pytest==8.3.5; extra == "dev"
 Requires-Dist: pytest-asyncio==0.25.3; extra == "dev"
 Provides-Extra: postgres

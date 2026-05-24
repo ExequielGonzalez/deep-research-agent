@@ -21,7 +21,6 @@ from deep_research_agent.domain.models import (
 )
 from deep_research_agent.domain.state import build_initial_state
 from deep_research_agent.persistence import create_checkpointer, create_run_store
-from deep_research_agent.runtime.events import emit_runtime_event
 from deep_research_agent.runtime.graph import build_research_graph
 from deep_research_agent.services import ResearchServiceBundle, build_service_bundle
 from deep_research_agent.settings import AppSettings
@@ -177,11 +176,6 @@ class ResearchRuntimeService:
                         message_prefix=message_prefix,
                     )
                     await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))
-                    emit_runtime_event(
-                        "snapshot",
-                        thread_id=thread_id,
-                        snapshot=latest_result.model_dump(mode="json"),
-                    )
                     if existing is None:
                         existing = self._record_from_result(latest_result)
             except Exception as exc:
@@ -196,11 +190,6 @@ class ResearchRuntimeService:
                     resume_supported=False,
                 )
                 await run_store.upsert_run(self._record_from_result(failure, existing=existing))
-                emit_runtime_event(
-                    "snapshot",
-                    thread_id=thread_id,
-                    snapshot=failure.model_dump(mode="json"),
-                )
                 raise
 
             await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))

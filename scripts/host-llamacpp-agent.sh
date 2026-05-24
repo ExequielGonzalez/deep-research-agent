@@ -11,6 +11,7 @@ OPENAI_BASE_URL="${OPENAI_BASE_URL:-${DEEP_RESEARCH_OPENAI_BASE_URL:-http://127.
 OPENAI_API_KEY="${OPENAI_API_KEY:-${DEEP_RESEARCH_OPENAI_API_KEY:-local}}"
 SEARCH_PROVIDER="${SEARCH_PROVIDER:-${DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER:-none}}"
 LOCAL_STATE_DIR="${LOCAL_STATE_DIR:-/tmp/deep-research-agent-host}"
+LLM_REQUEST_TIMEOUT_SECONDS="${LLM_REQUEST_TIMEOUT_SECONDS:-${DEEP_RESEARCH_LLM_REQUEST_TIMEOUT_SECONDS:-600}}"
 
 slugify() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
@@ -30,6 +31,7 @@ Environment overrides:
   OPENAI_API_KEY     default: local
   LOCAL_STATE_DIR    default: /tmp/deep-research-agent-host
   SEARCH_PROVIDER    default: none
+  LLM_REQUEST_TIMEOUT_SECONDS  default: 600
   IMAGE              default: deep-research-agent:compose
 
 Examples:
@@ -57,6 +59,7 @@ docker_agent() {
     -e DEEP_RESEARCH_PERSISTENCE_BACKEND=sqlite \
     -e DEEP_RESEARCH_SQLITE_DB_URL="${db_url}" \
     -e DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER="${SEARCH_PROVIDER}" \
+    -e DEEP_RESEARCH_LLM_REQUEST_TIMEOUT_SECONDS="${LLM_REQUEST_TIMEOUT_SECONDS}" \
     "$@"
 }
 

@@ -17,7 +17,6 @@ from deep_research_agent.domain.models import (
     SourceRecord,
     SynthesizedReport,
 )
-from deep_research_agent.runtime.events import emit_runtime_event
 from deep_research_agent.settings import AppSettings
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -26,7 +25,6 @@ _MAX_TASKS_IN_CONTEXT = 12
 _MAX_SOURCES_IN_CONTEXT = 12
 _MAX_EVIDENCE_IN_CONTEXT = 24
 _MAX_TEXT_FIELD_CHARS = 320
-_MAX_EVENT_TEXT_CHARS = 6000
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -125,21 +123,6 @@ def _reflection_context(reflection: ReflectionOutput) -> dict[str, Any]:
 
 def _compact_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def _event_text(value: Any, *, limit: int = _MAX_EVENT_TEXT_CHARS) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        value = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in value)
-    if not isinstance(value, str):
-        value = json.dumps(value, ensure_ascii=False)
-    normalized = value.strip()
-    if not normalized:
-        return None
-    if len(normalized) <= limit:
-        return normalized
-    return f"{normalized[: limit - 3].rstrip()}..."
 
 
 class ResearchLLMService(ABC):
@@ -276,19 +259,12 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
 
 
 class OpenAIResearchLLMService(JSONSchemaLLMService):
-    def __init__(self, *, api_key: str, model_name: str, base_url: str, request_timeout_seconds: int):
+    def __init__(self, *, api_key: str, model_name: str, base_url: str):
         super().__init__(model_name=model_name)
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
-        self._request_timeout_seconds = request_timeout_seconds
 
     async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
-        emit_runtime_event(
-            "llm_stage_started",
-            provider="openai",
-            model=self._model_name,
-            phase=schema.__name__,
-        )
         payload = {
             "model": self._model_name,
             "messages": [
@@ -308,47 +284,20 @@ class OpenAIResearchLLMService(JSONSchemaLLMService):
             f"{self._base_url}/chat/completions",
             payload,
             headers={"Authorization": f"Bearer {self._api_key}"},
-            timeout_seconds=self._request_timeout_seconds,
         )
         try:
-            message = response["choices"][0]["message"]
-            raw_content = message["content"]
+            raw_content = response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise ProviderConfigurationError("OpenAI response did not contain structured message content.") from exc
-        reasoning_content = _event_text(message.get("reasoning_content"))
-        if reasoning_content:
-            emit_runtime_event(
-                "llm_reasoning",
-                provider="openai",
-                model=self._model_name,
-                phase=schema.__name__,
-                content=reasoning_content,
-            )
-        output_preview = _event_text(raw_content)
-        if output_preview:
-            emit_runtime_event(
-                "llm_output_preview",
-                provider="openai",
-                model=self._model_name,
-                phase=schema.__name__,
-                content=output_preview,
-            )
         return _parse_schema_response(schema, raw_content)
 
 
 class OllamaResearchLLMService(JSONSchemaLLMService):
-    def __init__(self, *, model_name: str, base_url: str, request_timeout_seconds: int):
+    def __init__(self, *, model_name: str, base_url: str):
         super().__init__(model_name=model_name)
         self._base_url = base_url.rstrip("/")
-        self._request_timeout_seconds = request_timeout_seconds
 
     async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
-        emit_runtime_event(
-            "llm_stage_started",
-            provider="ollama",
-            model=self._model_name,
-            phase=schema.__name__,
-        )
         payload = {
             "model": self._model_name,
             "stream": False,
@@ -358,41 +307,22 @@ class OllamaResearchLLMService(JSONSchemaLLMService):
                 {"role": "user", "content": user_prompt},
             ],
         }
-        response = await _http_json_request(
-            f"{self._base_url}/api/chat",
-            payload,
-            timeout_seconds=self._request_timeout_seconds,
-        )
+        response = await _http_json_request(f"{self._base_url}/api/chat", payload)
         try:
             raw_content = response["message"]["content"]
         except (KeyError, TypeError) as exc:
             raise ProviderConfigurationError("Ollama response did not contain structured message content.") from exc
-        output_preview = _event_text(raw_content)
-        if output_preview:
-            emit_runtime_event(
-                "llm_output_preview",
-                provider="ollama",
-                model=self._model_name,
-                phase=schema.__name__,
-                content=output_preview,
-            )
         return _parse_schema_response(schema, raw_content)
 
 
-async def _http_json_request(
-    url: str,
-    payload: dict[str, Any],
-    headers: dict[str, str] | None = None,
-    *,
-    timeout_seconds: int = 60,
-) -> dict[str, Any]:
+async def _http_json_request(url: str, payload: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
     request_headers = {"Content-Type": "application/json", **(headers or {})}
 
     def _send() -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
         req = urllib_request.Request(url, data=body, headers=request_headers, method="POST")
         try:
-            with urllib_request.urlopen(req, timeout=timeout_seconds) as response:
+            with urllib_request.urlopen(req, timeout=60) as response:
                 return json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:  # pragma: no cover - network/provider behavior
             detail = exc.read().decode("utf-8", errors="ignore")
@@ -424,14 +354,9 @@ def build_llm_service(settings: AppSettings) -> ResearchLLMService:
             api_key=settings.openai_api_key,
             model_name=settings.model_name,
             base_url=settings.openai_base_url,
-            request_timeout_seconds=settings.llm_request_timeout_seconds,
         )
     if settings.model_provider.value == "ollama":
-        return OllamaResearchLLMService(
-            model_name=settings.model_name,
-            base_url=settings.ollama_base_url,
-            request_timeout_seconds=settings.llm_request_timeout_seconds,
-        )
+        return OllamaResearchLLMService(model_name=settings.model_name, base_url=settings.ollama_base_url)
     raise ProviderConfigurationError(
         f"Model provider `{settings.model_provider.value}` is not supported by the MVP runtime. "
         "Supported providers: openai, ollama."

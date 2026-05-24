@@ -39,7 +39,6 @@ class AppSettings(BaseSettings):
     max_sources_per_task: int = 8
     max_notes: int = 200
     max_iterations: int = 6
-    llm_request_timeout_seconds: int = 600
     http_user_agent: str = Field(default="deep-research-agent/0.1.0")
 
     @field_validator(
@@ -49,7 +48,6 @@ class AppSettings(BaseSettings):
         "max_sources_per_task",
         "max_notes",
         "max_iterations",
-        "llm_request_timeout_seconds",
     )
     @classmethod
     def positive_ints(cls, value: int) -> int:
