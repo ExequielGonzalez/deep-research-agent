@@ -80,6 +80,16 @@ def _coerce_float(value: Any) -> Any:
     return value
 
 
+def _fallback_title(*candidates: Any, default: str = "Follow-up research") -> str:
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+        normalized = " ".join(candidate.split()).strip()
+        if normalized:
+            return normalized[:80].rstrip(" .:-") or default
+    return default
+
+
 class ModelProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
@@ -265,6 +275,26 @@ class FollowUpTaskSuggestion(DomainModel):
     priority: int = 3
     success_criteria: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_local_model_keys(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        description = value.get("description") or value.get("details") or value.get("summary")
+        search_query = value.get("search_query") or value.get("query") or value.get("web_search_query")
+        title = value.get("title") or value.get("task_title") or value.get("name")
+
+        return {
+            "title": _fallback_title(title, description, search_query),
+            "description": description or title or "Investigate the remaining evidence gap.",
+            "search_query": search_query or title or description or "follow-up research",
+            "section_title": value.get("section_title") or value.get("section"),
+            "parent_task_id": value.get("parent_task_id") or value.get("task_id"),
+            "priority": value.get("priority", 3),
+            "success_criteria": value.get("success_criteria") or value.get("acceptance_criteria") or value.get("criteria") or [],
+        }
+
     @field_validator("priority", mode="before")
     @classmethod
     def normalize_priority(cls, value: Any) -> Any:
@@ -286,6 +316,41 @@ class ReflectionOutput(DomainModel):
     needs_human_input: bool = False
     confidence: float = 0.0
     created_at: datetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_local_model_keys(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        knowledge_gaps = value.get("knowledge_gaps")
+        if knowledge_gaps in (None, [], ""):
+            knowledge_gaps = value.get("gaps")
+        if knowledge_gaps in (None, [], ""):
+            knowledge_gaps = value.get("evidence_gaps")
+
+        needs_more_research = value.get("needs_more_research")
+        if needs_more_research is None:
+            needs_more_research = True
+        needs_more_research = _coerce_bool(needs_more_research)
+
+        needs_human_input = value.get("needs_human_input")
+        if needs_human_input is None and needs_more_research is False:
+            needs_human_input = True
+        if needs_human_input is None:
+            needs_human_input = False
+
+        return {
+            "reflection_id": value.get("reflection_id", new_id()),
+            "summary": value.get("summary") or value.get("assessment") or value.get("analysis") or "Evidence review completed.",
+            "knowledge_gaps": knowledge_gaps,
+            "follow_up_tasks": value.get("follow_up_tasks") or value.get("next_steps") or value.get("recommended_searches") or [],
+            "covered_task_ids": value.get("covered_task_ids") or value.get("supported_task_ids") or value.get("completed_task_ids") or [],
+            "needs_more_research": needs_more_research,
+            "needs_human_input": needs_human_input,
+            "confidence": value.get("confidence", 0.0),
+            "created_at": value.get("created_at", utc_now()),
+        }
 
     @field_validator("knowledge_gaps", "covered_task_ids", mode="before")
     @classmethod
@@ -336,7 +401,7 @@ class SynthesisSection(DomainModel):
         if not isinstance(value, dict):
             return value
 
-        title = value.get("title") or value.get("section_title")
+        title = value.get("title") or value.get("section_title") or value.get("theme")
         summary_points = value.get("summary_points")
         if summary_points in (None, [], ""):
             summary_points = value.get("key_evidence", [])

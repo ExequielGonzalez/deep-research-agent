@@ -11,7 +11,7 @@ from urllib import error as urllib_error, request as urllib_request
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from deep_research_agent.domain.models import HumanDecisionType, ModelProvider, ResearchRequest, RunRecord, RunStatus
@@ -85,6 +85,12 @@ def _fetch_model_catalog(base_url: str, api_key: str) -> list[str]:
     except urllib_error.URLError as exc:
         raise HTTPException(status_code=502, detail=f"Model catalog request failed: {exc.reason}") from exc
     return [item.get("id") for item in payload.get("data", []) if item.get("id")]
+
+
+def _slugify_filename(value: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else "-" for char in value)
+    collapsed = "-".join(part for part in normalized.split("-") if part)
+    return collapsed or "report"
 
 
 def _utc_now_iso() -> str:
@@ -237,6 +243,7 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
             "default_model_name": base_settings.model_name,
             "default_openai_base_url": base_settings.openai_base_url,
             "default_llm_request_timeout_seconds": base_settings.llm_request_timeout_seconds,
+            "default_report_output_dir": base_settings.report_output_dir,
             "suggested_local_base_url": "http://127.0.0.1:8085/v1",
         }
 
@@ -261,6 +268,24 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
         if run is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
         return _serialize_run(run, is_running=manager.is_running(thread_id), runtime_config=manager.runtime_config(thread_id))
+
+    @app.get("/api/runs/{thread_id}/report.md")
+    async def export_run_markdown(thread_id: str) -> PlainTextResponse:
+        run = await _read_service().get_run(thread_id)
+        if run is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
+
+        markdown = run.latest_state.get("final_report_markdown")
+        if not isinstance(markdown, str) or not markdown.strip():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This run does not have a completed markdown report yet.")
+
+        title = run.latest_state.get("final_report_title") or run.query or thread_id
+        filename = f"{_slugify_filename(str(title))}-{thread_id[:8]}.md"
+        return PlainTextResponse(
+            markdown,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.get("/api/runs/{thread_id}/events")
     async def stream_run_events(

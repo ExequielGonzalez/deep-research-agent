@@ -122,6 +122,7 @@ class ResearchGraphState(TypedDict, total=False):
     citation_records: Annotated[list[CitationRecord], merge_citations]
     final_report_title: str | None
     final_report_markdown: str | None
+    final_report_path: str | None
     final_report_status: str | None
     iteration_count: int
     max_iterations: int
@@ -148,6 +149,7 @@ def build_initial_state(thread_id: str, request: ResearchRequest, max_iterations
         citation_records=[],
         final_report_title=None,
         final_report_markdown=None,
+        final_report_path=None,
         final_report_status=None,
         iteration_count=0,
         max_iterations=max_iterations,

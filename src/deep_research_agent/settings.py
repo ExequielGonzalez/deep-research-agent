@@ -40,6 +40,7 @@ class AppSettings(BaseSettings):
     max_notes: int = 200
     max_iterations: int = 6
     llm_request_timeout_seconds: int = 600
+    report_output_dir: str = ".local/reports"
     http_user_agent: str = Field(default="deep-research-agent/0.1.0")
 
     @field_validator(

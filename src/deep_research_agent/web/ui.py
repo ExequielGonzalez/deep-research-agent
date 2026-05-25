@@ -69,6 +69,7 @@ INDEX_HTML = """<!DOCTYPE html>
     .approval-box,
     .report-box,
     .timeline-box,
+    .feed-box,
     .tasks-box,
     .sources-box {
       padding: 18px;
@@ -210,12 +211,16 @@ INDEX_HTML = """<!DOCTYPE html>
     }
     .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
     .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       min-height: 46px;
       border: 1px solid transparent;
       border-radius: 999px;
       padding: 0 18px;
       cursor: pointer;
       font-weight: 700;
+      text-decoration: none;
       transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
     }
     .button:hover { transform: translateY(-1px); }
@@ -236,13 +241,79 @@ INDEX_HTML = """<!DOCTYPE html>
     }
     .content-grid {
       display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.75fr);
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .side-column,
+    .main-column {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+    .support-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 18px;
     }
     .timeline-list, .tasks-list, .sources-list, .section-list, .feed-list {
       display: grid;
       gap: 12px;
       margin-top: 14px;
+    }
+    .timeline-group {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,0.72);
+      overflow: hidden;
+    }
+    .timeline-group summary {
+      list-style: none;
+    }
+    .timeline-group summary::-webkit-details-marker {
+      display: none;
+    }
+    .timeline-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 16px 18px;
+      cursor: pointer;
+    }
+    .timeline-group[open] .timeline-summary {
+      background: rgba(19,111,99,0.06);
+      border-bottom: 1px solid var(--line);
+    }
+    .timeline-group-title {
+      display: block;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .timeline-group-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    .timeline-group-body {
+      padding: 14px 18px 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .timeline-subgroup {
+      display: grid;
+      gap: 10px;
+    }
+    .timeline-subtitle {
+      font-size: 0.74rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .timeline-note-list {
+      display: grid;
+      gap: 10px;
     }
     .timeline-item, .task-card, .section-card, .source-card, .feed-item {
       border: 1px solid var(--line);
@@ -278,6 +349,26 @@ INDEX_HTML = """<!DOCTYPE html>
       font-size: 0.82rem;
       color: var(--muted);
     }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .report-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .report-path {
+      max-width: 78ch;
+      word-break: break-word;
+    }
+    .report-markdown-shell {
+      margin-top: 6px;
+    }
     .report-box pre {
       margin: 0;
       white-space: pre-wrap;
@@ -285,6 +376,12 @@ INDEX_HTML = """<!DOCTYPE html>
       color: var(--ink);
       font-family: var(--serif);
       font-size: 1rem;
+      max-height: 680px;
+      overflow: auto;
+      padding: 20px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.82);
     }
     .empty-state {
       border: 1px dashed rgba(22,21,19,0.18);
@@ -316,6 +413,9 @@ INDEX_HTML = """<!DOCTYPE html>
       .app-shell, .content-grid, .field-grid {
         grid-template-columns: 1fr;
       }
+      .support-grid {
+        grid-template-columns: 1fr;
+      }
       .sidebar {
         position: static;
         min-height: auto;
@@ -326,6 +426,7 @@ INDEX_HTML = """<!DOCTYPE html>
     @media (max-width: 720px) {
       .app-shell { width: min(100%, calc(100% - 16px)); }
       .workspace-header { flex-direction: column; }
+      .report-header { flex-direction: column; }
       .count-grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -403,41 +504,53 @@ INDEX_HTML = """<!DOCTYPE html>
       </section>
 
       <div class="content-grid">
-        <section class="panel timeline-box">
-          <p class="eyebrow">Timeline</p>
-          <div id="stats" class="count-grid"></div>
-          <div id="timeline-list" class="timeline-list"></div>
-          <div style="margin-top:18px">
+        <div class="side-column">
+          <section class="panel timeline-box">
+            <p class="eyebrow">Timeline</p>
+            <div id="timeline-list" class="timeline-list"></div>
+          </section>
+
+          <section class="panel feed-box">
             <p class="eyebrow">Live Feed</p>
             <div id="feed-list" class="feed-list"></div>
-          </div>
-        </section>
-
-        <div class="workspace" style="gap:18px">
-          <section class="panel tasks-box">
-            <div class="meta-row">
-              <p class="eyebrow">Tasks</p>
-              <span id="tasks-count" class="pill">0</span>
-            </div>
-            <div id="tasks-list" class="tasks-list"></div>
           </section>
+        </div>
 
-          <section class="panel sources-box">
-            <div class="meta-row">
-              <p class="eyebrow">Sources</p>
-              <span id="sources-count" class="pill">0</span>
-            </div>
-            <div id="sources-list" class="sources-list"></div>
-          </section>
-
+        <div class="main-column">
           <section class="panel report-box">
-            <div class="meta-row">
-              <p class="eyebrow">Final Report</p>
-              <span id="report-status" class="pill">sin reporte</span>
+            <div class="report-header">
+              <div>
+                <p class="eyebrow">Final Report</p>
+                <h3 style="font-size:1.3rem; line-height:1.15">Reporte final, guardado local y export</h3>
+                <p id="report-path" class="subtle report-path">El reporte final se va a guardar en disco y se podra exportar en Markdown cuando la corrida llegue a sintesis.</p>
+              </div>
+              <div class="report-actions">
+                <span id="report-status" class="pill">sin reporte</span>
+                <a id="download-report" class="button button-secondary" href="#" hidden>Exportar Markdown</a>
+              </div>
             </div>
+            <div id="stats" class="count-grid"></div>
+            <div id="report-markdown" class="report-markdown-shell"></div>
             <div id="sections-list" class="section-list"></div>
-            <div id="report-markdown" style="margin-top:16px"></div>
           </section>
+
+          <div class="support-grid">
+            <section class="panel tasks-box">
+              <div class="meta-row">
+                <p class="eyebrow">Tasks</p>
+                <span id="tasks-count" class="pill">0</span>
+              </div>
+              <div id="tasks-list" class="tasks-list"></div>
+            </section>
+
+            <section class="panel sources-box">
+              <div class="meta-row">
+                <p class="eyebrow">Sources</p>
+                <span id="sources-count" class="pill">0</span>
+              </div>
+              <div id="sources-list" class="sources-list"></div>
+            </section>
+          </div>
         </div>
       </div>
     </main>
@@ -471,12 +584,14 @@ INDEX_HTML = """<!DOCTYPE html>
       tasksCount: document.getElementById('tasks-count'),
       sourcesList: document.getElementById('sources-list'),
       sourcesCount: document.getElementById('sources-count'),
+      downloadReport: document.getElementById('download-report'),
       approvalBox: document.getElementById('approval-box'),
       approvalTitle: document.getElementById('approval-title'),
       approvalPrompt: document.getElementById('approval-prompt'),
       approvalSummary: document.getElementById('approval-summary'),
       sectionsList: document.getElementById('sections-list'),
       reportMarkdown: document.getElementById('report-markdown'),
+      reportPath: document.getElementById('report-path'),
       reportStatus: document.getElementById('report-status'),
     };
 
@@ -562,16 +677,171 @@ INDEX_HTML = """<!DOCTYPE html>
       `).join('');
     }
 
-    function renderTimeline(run) {
+    function createTimelineSection(title, kind) {
+      return { title, kind, groups: [], count: 0 };
+    }
+
+    function ensureTimelineGroup(section, key, title) {
+      let group = section.groups.find((item) => item.key === key);
+      if (!group) {
+        group = { key, title, items: [] };
+        section.groups.push(group);
+      }
+      return group;
+    }
+
+    function appendTimelineNote(section, key, title, note) {
+      const group = ensureTimelineGroup(section, key, title);
+      group.items.push(note);
+      section.count += 1;
+    }
+
+    function classifyTimelineNote(note, sectionKind) {
+      const normalized = String(note || '').toLowerCase();
+      if (normalized.includes('retrieved ') || normalized.includes('no search hits') || normalized.includes('additional search')) {
+        return { key: 'search', title: 'Busqueda' };
+      }
+      if (normalized.includes('extract') || normalized.includes('extractable content') || normalized.includes('evidence item')) {
+        return { key: 'extraction', title: 'Extraccion' };
+      }
+      if (normalized.includes('knowledge gap') || normalized.includes('follow-up task')) {
+        return { key: 'reflection', title: 'Reflection' };
+      }
+      if (normalized.includes('plan approval') || normalized.includes('plan review') || normalized.includes('re-planning')) {
+        return { key: 'review', title: 'Review' };
+      }
+      if (normalized.includes('sufficiency review') || normalized.includes('human review')) {
+        return { key: 'review', title: 'Review' };
+      }
+      if (normalized.includes('synthesized final report') || normalized.includes('run cancelled') || normalized.includes('run failed')) {
+        return { key: 'result', title: 'Resultado' };
+      }
+      if (sectionKind === 'iteration') {
+        return { key: 'reflection', title: 'Reflection' };
+      }
+      return { key: 'overview', title: sectionKind === 'planning' ? 'Plan' : 'Resumen' };
+    }
+
+    function summarizeTimelineSection(section) {
+      return section.groups.map((group) => `${group.title} ${group.items.length}`).join(' · ');
+    }
+
+    function buildTimelineSections(run) {
       const notes = run.state?.notes || [];
-      if (!notes.length) {
+      const sections = [];
+      let planningSection = createTimelineSection('Plan y setup', 'planning');
+      let currentSection = planningSection;
+      let currentIterationLabel = null;
+      sections.push(planningSection);
+
+      notes.forEach((note) => {
+        const iterationMatch = String(note).match(/^Starting research iteration (\\d+) of (\\d+)\\./i);
+        if (iterationMatch) {
+          currentIterationLabel = `Iteracion ${iterationMatch[1]} de ${iterationMatch[2]}`;
+          currentSection = createTimelineSection(currentIterationLabel, 'iteration');
+          sections.push(currentSection);
+          appendTimelineNote(currentSection, 'overview', 'Inicio', note);
+          return;
+        }
+
+        const normalized = String(note || '').toLowerCase();
+        if (
+          normalized.includes('awaiting human sufficiency review')
+          || normalized.includes('received sufficiency review decision')
+          || normalized.includes('applied sufficiency-review feedback')
+        ) {
+          const reviewTitle = currentIterationLabel ? `Review humana · ${currentIterationLabel}` : 'Review humana';
+          const previous = sections[sections.length - 1];
+          if (!previous || previous.kind !== 'review' || previous.title !== reviewTitle) {
+            currentSection = createTimelineSection(reviewTitle, 'review');
+            sections.push(currentSection);
+          } else {
+            currentSection = previous;
+          }
+          const reviewGroup = normalized.includes('feedback') ? { key: 'overview', title: 'Accion' } : { key: 'review', title: 'Checkpoint' };
+          appendTimelineNote(currentSection, reviewGroup.key, reviewGroup.title, note);
+          return;
+        }
+
+        if (normalized.includes('synthesized final report') || normalized.includes('run cancelled')) {
+          const previous = sections[sections.length - 1];
+          if (!previous || previous.kind !== 'report') {
+            currentSection = createTimelineSection('Cierre', 'report');
+            sections.push(currentSection);
+          } else {
+            currentSection = previous;
+          }
+          appendTimelineNote(currentSection, 'result', 'Resultado', note);
+          return;
+        }
+
+        if (
+          normalized.includes('plan approval')
+          || normalized.includes('plan review')
+          || normalized.includes('re-planning')
+          || normalized.startsWith('planned ')
+        ) {
+          currentSection = planningSection;
+        }
+
+        const group = classifyTimelineNote(note, currentSection.kind);
+        appendTimelineNote(currentSection, group.key, group.title, note);
+      });
+
+      if (run.status === 'failed' && run.last_message && !notes.includes(run.last_message)) {
+        const previous = sections[sections.length - 1];
+        if (!previous || previous.kind !== 'report') {
+          currentSection = createTimelineSection('Cierre', 'report');
+          sections.push(currentSection);
+        } else {
+          currentSection = previous;
+        }
+        appendTimelineNote(currentSection, 'result', 'Resultado', run.last_message);
+      }
+
+      return sections.filter((section) => section.count > 0);
+    }
+
+    function shouldOpenTimelineSection(section, index, sections) {
+      if (sections.length <= 2) {
+        return true;
+      }
+      if (index === sections.length - 1) {
+        return true;
+      }
+      return section.kind === 'review' && index >= sections.length - 2;
+    }
+
+    function renderTimeline(run) {
+      const sections = buildTimelineSections(run);
+      if (!sections.length) {
         elements.timelineList.innerHTML = '<div class="empty-state">El timeline va a llenarse a medida que el grafo persista notas y checkpoints.</div>';
         return;
       }
-      elements.timelineList.innerHTML = notes.map((note) => `
-        <div class="timeline-item">
-          <p>${escapeHtml(note)}</p>
-        </div>
+      elements.timelineList.innerHTML = sections.map((section, index) => `
+        <details class="timeline-group" ${shouldOpenTimelineSection(section, index, sections) ? 'open' : ''}>
+          <summary class="timeline-summary">
+            <div>
+              <span class="timeline-group-title">${escapeHtml(section.title)}</span>
+              <p class="timeline-group-meta">${escapeHtml(summarizeTimelineSection(section))}</p>
+            </div>
+            <span class="pill">${escapeHtml(section.count)} evento${section.count === 1 ? '' : 's'}</span>
+          </summary>
+          <div class="timeline-group-body">
+            ${section.groups.map((group) => `
+              <section class="timeline-subgroup">
+                <h4 class="timeline-subtitle">${escapeHtml(group.title)}</h4>
+                <div class="timeline-note-list">
+                  ${group.items.map((note) => `
+                    <div class="timeline-item">
+                      <p>${escapeHtml(note)}</p>
+                    </div>
+                  `).join('')}
+                </div>
+              </section>
+            `).join('')}
+          </div>
+        </details>
       `).join('');
     }
 
@@ -637,7 +907,22 @@ INDEX_HTML = """<!DOCTYPE html>
     function renderReport(run) {
       const stateSnapshot = run.state || {};
       const sections = stateSnapshot.report_sections || [];
+      const hasMarkdown = Boolean(stateSnapshot.final_report_markdown);
       elements.reportStatus.textContent = stateSnapshot.final_report_status || 'sin reporte';
+      elements.downloadReport.hidden = !hasMarkdown;
+      elements.downloadReport.href = hasMarkdown ? `/api/runs/${encodeURIComponent(run.thread_id)}/report.md` : '#';
+      elements.reportPath.textContent = stateSnapshot.final_report_path
+        ? `Guardado en ${stateSnapshot.final_report_path}`
+        : hasMarkdown
+          ? 'Reporte listo para exportar en Markdown.'
+          : 'El reporte final se va a guardar en disco y se podra exportar en Markdown cuando la corrida llegue a sintesis.';
+
+      if (stateSnapshot.final_report_markdown) {
+        elements.reportMarkdown.innerHTML = `<pre>${escapeHtml(stateSnapshot.final_report_markdown)}</pre>`;
+      } else {
+        elements.reportMarkdown.innerHTML = '<div class="empty-state">El markdown final va a aparecer aca apenas el workflow complete la sintesis.</div>';
+      }
+
       if (!sections.length) {
         elements.sectionsList.innerHTML = '<div class="empty-state">El reporte final y sus secciones van a aparecer cuando el workflow llegue a sintesis.</div>';
       } else {
@@ -650,11 +935,6 @@ INDEX_HTML = """<!DOCTYPE html>
             <p class="subtle" style="margin-top:8px">${escapeHtml(section.content_markdown || '')}</p>
           </article>
         `).join('');
-      }
-      if (stateSnapshot.final_report_markdown) {
-        elements.reportMarkdown.innerHTML = `<pre>${escapeHtml(stateSnapshot.final_report_markdown)}</pre>`;
-      } else {
-        elements.reportMarkdown.innerHTML = '';
       }
     }
 

@@ -82,7 +82,7 @@ class ReportFormatter:
         for section in sections:
             body_lines.extend([f"## {section.title}", "", section.content_markdown, ""])
             if section.summary_points:
-                body_lines.extend([*(f"- {point}" for point in section.summary_points), ""])
+                body_lines.extend(["### Key Points", "", *(f"- {point}" for point in section.summary_points), ""])
         body_lines.extend(["## Sources", ""])
         for citation in citations:
             body_lines.append(f"- {citation.marker} [{citation.title}]({citation.url})")

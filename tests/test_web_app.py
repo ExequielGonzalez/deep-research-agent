@@ -93,6 +93,12 @@ def test_web_run_lifecycle_and_index():
 
             completed = wait_for_run(client, thread_id, lambda run: run["status"] == "completed")
             assert completed["state"]["final_report_markdown"].startswith("# AI Infrastructure Market Assessment")
+            assert completed["state"]["final_report_path"].endswith(".md")
+
+            exported = client.get(f"/api/runs/{thread_id}/report.md")
+            assert exported.status_code == 200
+            assert exported.text.startswith("# AI Infrastructure Market Assessment")
+            assert "attachment; filename=" in exported.headers["content-disposition"]
 
             recent = client.get("/api/runs?limit=10")
             assert recent.status_code == 200

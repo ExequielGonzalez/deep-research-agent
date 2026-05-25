@@ -4,6 +4,8 @@ import json
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -49,6 +51,11 @@ def to_jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [to_jsonable(item) for item in value]
     return value
+
+
+def _slugify_report_name(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "report"
 
 
 class ResearchRuntimeService:
@@ -170,12 +177,12 @@ class ResearchRuntimeService:
                     config={"configurable": {"thread_id": thread_id}},
                     stream_mode="values",
                 ):
-                    latest_result = self._build_command_result(
+                    latest_result = self._persist_final_report_if_available(self._build_command_result(
                         result=state_snapshot,
                         thread_id=thread_id,
                         default_query=default_query,
                         message_prefix=message_prefix,
-                    )
+                    ))
                     await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))
                     emit_runtime_event(
                         "snapshot",
@@ -203,8 +210,31 @@ class ResearchRuntimeService:
                 )
                 raise
 
+            latest_result = self._persist_final_report_if_available(latest_result)
             await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))
             return latest_result
+
+    def _persist_final_report_if_available(self, result: RuntimeCommandResult) -> RuntimeCommandResult:
+        if result.status is not RunStatus.COMPLETED:
+            return result
+
+        markdown = result.state.get("final_report_markdown")
+        if not isinstance(markdown, str) or not markdown.strip():
+            return result
+
+        title = result.state.get("final_report_title") or result.query or result.thread_id
+        file_name = f"{result.thread_id}-{_slugify_report_name(str(title))}.md"
+        output_dir = Path(self._settings.report_output_dir).expanduser()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = (output_dir / file_name).resolve()
+        output_path.write_text(markdown, encoding="utf-8")
+
+        if result.state.get("final_report_path") == str(output_path):
+            return result
+
+        updated_state = dict(result.state)
+        updated_state["final_report_path"] = str(output_path)
+        return result.model_copy(update={"state": updated_state})
 
     def _build_command_result(self, *, result: dict[str, Any], thread_id: str, default_query: str, message_prefix: str) -> RuntimeCommandResult:
         interrupts = [to_jsonable(interrupt.value) for interrupt in result.get("__interrupt__", [])]

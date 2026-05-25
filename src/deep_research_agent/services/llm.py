@@ -27,6 +27,10 @@ _MAX_SOURCES_IN_CONTEXT = 12
 _MAX_EVIDENCE_IN_CONTEXT = 24
 _MAX_TEXT_FIELD_CHARS = 320
 _MAX_EVENT_TEXT_CHARS = 6000
+_SYNTHESIS_MAX_TASKS_IN_CONTEXT = 20
+_SYNTHESIS_MAX_SOURCES_IN_CONTEXT = 40
+_SYNTHESIS_MAX_EVIDENCE_IN_CONTEXT = 80
+_SYNTHESIS_TEXT_FIELD_CHARS = 900
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -142,6 +146,79 @@ def _event_text(value: Any, *, limit: int = _MAX_EVENT_TEXT_CHARS) -> str | None
     return f"{normalized[: limit - 3].rstrip()}..."
 
 
+def _request_context_for_synthesis(request: ResearchRequest) -> dict[str, Any]:
+    return {
+        "query": _truncate_text(request.query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "audience": _truncate_text(request.audience, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "objective": _truncate_text(request.objective, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "constraints": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in request.constraints[:10]],
+        "deliverable_format": request.deliverable_format,
+    }
+
+
+def _task_context_for_synthesis(task: PlanTask) -> dict[str, Any]:
+    return {
+        "task_id": task.task_id,
+        "title": _truncate_text(task.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "description": _truncate_text(task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "search_query": _truncate_text(task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "section_title": _truncate_text(task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "status": task.status.value,
+        "priority": task.priority,
+        "parent_task_id": task.parent_task_id,
+        "success_criteria": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in task.success_criteria[:6]],
+    }
+
+
+def _source_context_for_synthesis(source: SourceRecord) -> dict[str, Any]:
+    return {
+        "source_id": source.source_id,
+        "title": _truncate_text(source.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "url": source.url,
+        "canonical_url": source.canonical_url,
+        "provider": source.provider.value,
+        "source_type": source.source_type.value,
+        "task_ids": source.task_ids,
+        "snippet": _truncate_text(source.snippet, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "published_at": source.published_at.isoformat() if source.published_at else None,
+    }
+
+
+def _evidence_context_for_synthesis(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "evidence_id": item.get("evidence_id"),
+        "source_id": item.get("source_id"),
+        "source_title": _truncate_text(item.get("source_title"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "supports_task_id": item.get("supports_task_id"),
+        "claim": _truncate_text(item.get("claim"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "excerpt": _truncate_text(item.get("excerpt"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "confidence": item.get("confidence"),
+    }
+
+
+def _reflection_context_for_synthesis(reflection: ReflectionOutput) -> dict[str, Any]:
+    return {
+        "summary": _truncate_text(reflection.summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "knowledge_gaps": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in reflection.knowledge_gaps[:10]],
+        "covered_task_ids": reflection.covered_task_ids,
+        "needs_more_research": reflection.needs_more_research,
+        "needs_human_input": reflection.needs_human_input,
+        "confidence": reflection.confidence,
+        "follow_up_tasks": [
+            {
+                "title": _truncate_text(task.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+                "description": _truncate_text(task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+                "search_query": _truncate_text(task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+                "section_title": _truncate_text(task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+                "parent_task_id": task.parent_task_id,
+                "priority": task.priority,
+                "success_criteria": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in task.success_criteria[:6]],
+            }
+            for task in reflection.follow_up_tasks[:8]
+        ],
+    }
+
+
 class ResearchLLMService(ABC):
     @abstractmethod
     async def plan_research(
@@ -229,7 +306,9 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
             ReflectionOutput,
             system_prompt=(
                 "You are a research reflection engine. Evaluate evidence sufficiency task by task. "
-                "Return only structured JSON matching the schema. Keep covered_task_ids factual and propose follow_up_tasks only when evidence is missing."
+                "Return only structured JSON matching the schema. Use these exact keys: summary, knowledge_gaps, follow_up_tasks, covered_task_ids, needs_more_research, needs_human_input, confidence. "
+                "Do not rename knowledge_gaps to gaps or evidence_gaps. Each follow_up_task must include title, description, search_query, optional section_title, optional parent_task_id, priority, and success_criteria. Do not include status. "
+                "Keep covered_task_ids factual and propose follow_up_tasks only when evidence is missing."
             ),
             user_prompt=(
                 "Assess whether more research is needed. If evidence is sufficient, set needs_more_research to false and set needs_human_input to true. "
@@ -250,23 +329,27 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
         reflections: list[ReflectionOutput],
     ) -> SynthesizedReport:
         context = {
-            "request": _request_context(request),
-            "plan_title": _truncate_text(plan_title),
-            "plan_summary": _truncate_text(plan_summary),
-            "plan_tasks": [_task_context(task) for task in plan_tasks[:_MAX_TASKS_IN_CONTEXT]],
-            "sources": [_source_context(source) for source in sources[:_MAX_SOURCES_IN_CONTEXT]],
-            "evidence_summary": [_evidence_context(item) for item in evidence_summary[:_MAX_EVIDENCE_IN_CONTEXT]],
-            "reflections": [_reflection_context(reflection) for reflection in reflections[-3:]],
+            "request": _request_context_for_synthesis(request),
+            "plan_title": _truncate_text(plan_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+            "plan_summary": _truncate_text(plan_summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+            "plan_tasks": [_task_context_for_synthesis(task) for task in plan_tasks[:_SYNTHESIS_MAX_TASKS_IN_CONTEXT]],
+            "sources": [_source_context_for_synthesis(source) for source in sources[:_SYNTHESIS_MAX_SOURCES_IN_CONTEXT]],
+            "evidence_summary": [_evidence_context_for_synthesis(item) for item in evidence_summary[:_SYNTHESIS_MAX_EVIDENCE_IN_CONTEXT]],
+            "reflections": [_reflection_context_for_synthesis(reflection) for reflection in reflections[-6:]],
         }
         return await self._generate_structured(
             SynthesizedReport,
             system_prompt=(
-                "You are the final report writer for a deep research workflow. Use only the supplied evidence. "
-                "Return structured JSON matching the schema. Each finding section must include supporting source_ids."
+                "You are the final report writer for a deep research workflow. Produce a thorough, analysis-heavy report rather than a brief outline. "
+                "Use only the supplied evidence. Explain concrete implications, comparisons, tensions, caveats, and noteworthy details grounded in that evidence. "
+                "Return structured JSON matching the schema. Use these exact top-level keys: title, executive_summary, methodology, findings, optional conclusion, final_status. "
+                "Each finding must use title, body_markdown, source_ids, and summary_points. Do not use theme instead of title. Each finding section must include supporting source_ids and substantive body_markdown."
             ),
             user_prompt=(
-                "Write a Markdown-ready report outline with title, executive_summary, methodology, findings, optional conclusion, and final_status. "
-                "Do not invent source_ids.\n"
+                "Write a Markdown-ready final report with title, executive_summary, methodology, findings, optional conclusion, and final_status. "
+                "Do not write an outline. Deliver a full report. Executive_summary should be 2-4 paragraphs. Methodology should explain scope, evidence coverage, and limits. "
+                "For findings, cover each major supported theme from the planned work, and make every section rich enough to stand on its own: 2-4 dense paragraphs plus 3-6 summary_points when possible. "
+                "Synthesize across sources, compare evidence when it differs, and call out uncertainties explicitly. Every finding object must use title, not theme. Do not invent source_ids or unsupported claims.\n"
                 f"Context:\n{_compact_json(context)}"
             ),
         )

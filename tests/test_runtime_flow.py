@@ -57,12 +57,16 @@ async def test_runtime_end_to_end_resume_loop_and_report_persistence():
         assert "[1]" in markdown and "[2]" in markdown
         assert completed.state["final_report_status"] == "completed"
         assert completed.state["citation_records"][0]["marker"] == "[1]"
+        report_path = Path(completed.state["final_report_path"])
+        assert report_path.exists()
+        assert report_path.read_text(encoding="utf-8").startswith("# AI Infrastructure Market Assessment")
 
         async with create_run_store(settings) as run_store:
             persisted = await run_store.get_run(thread_id)
         assert persisted is not None
         assert persisted.status.value == "completed"
         assert persisted.latest_state["final_report_title"] == "AI Infrastructure Market Assessment"
+        assert Path(persisted.latest_state["final_report_path"]).exists()
         assert persisted.latest_state["iteration_count"] == 2
 
         assert await service.list_pending_runs() == []

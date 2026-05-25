@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 
 from deep_research_agent.domain.models import (
     EvidenceRecord,
@@ -230,10 +231,17 @@ def build_fake_bundle() -> ResearchServiceBundle:
 
 
 def build_test_settings(sqlite_url: str) -> AppSettings:
+    report_output_dir = ".local/reports"
+    sqlite_prefix = "sqlite+aiosqlite:///"
+    if sqlite_url.startswith(sqlite_prefix):
+        sqlite_path = Path(sqlite_url[len(sqlite_prefix):])
+        report_output_dir = str(sqlite_path.parent / "reports")
+
     return AppSettings(
         model_provider=ModelProvider.OPENAI,
         model_name="gpt-4.1-mini",
         sqlite_db_url=sqlite_url,
+        report_output_dir=report_output_dir,
         default_search_provider=SearchProvider.NONE,
         max_iterations=4,
     )
