@@ -1,0 +1,177 @@
+# 🧠 Deep Research Agent
+
+Un sistema avanzado de agentes autónomos diseñado para ejecutar investigaciones profundas, análisis multidimensionales y generación de informes técnicos de alta fidelidad. A diferencia de los LLMs convencionales, este agente utiliza un paradigma de **orquestación basada en grafos** para navegar por la web, evaluar información, reflexionar sobre hallazgos y producir documentos finales estructurados.
+
+## 🔄 Flujo de Trabajo (Arquitectura del Agente)
+
+El proceso de investigación sigue un ciclo iterativo de pensamiento, acción y verificación, orquestado por un grafo de estados.
+
+### 1. Diagrama de Flujo Principal (StateGraph)
+
+```mermaid
+graph TD
+    Start((Inicio)) --> Plan[Planificación Estratégica]
+    Plan --> HumanApproval{¿Aprobar Plan?}
+    
+    HumanApproval -- No --> Plan
+    HumanApproval -- Sí --> Search[Búsqueda y Recuperación]
+    
+    subgraph Bucle_Iterativo [Bucle de Investigación]
+        Search --> Extract[Extracción y Compresión]
+        Extract --> Reflect[Reflexión y Análisis]
+        Reflect --> Sufficiency{¿Información Suficiente?}
+        Sufficiency -- No (Nueva Búsqueda) --> Search
+    end
+    
+    Sufficiency -- Sí --> Synthesis[Síntesis de Informe]
+    Synthesis --> HumanReview{¿Revisión Humana?}
+    
+    HumanReview -- Corregir/Añadir --> Search
+    HumanReview -- OK --> Final[Generación de Reporte Final]
+    Final --> End((Fin))
+```
+
+### 2. Detalle de la Fase de Reflexión (Simulación Adversarial)
+
+Durante la fase de reflexión, el agente no solo "lee", sino que simula un debate para asegurar la calidad.
+
+```mermaid
+sequenceDiagram
+    participant G as Grafo (Orquestador)
+    participant P as Proponente (Redactor)
+    participant C as Crítico (Auditor)
+    participant S as Fuentes (Web/Docs)
+
+    G->>P: Generar hipótesis basada en hallazgos
+    P->>S: Contrastar con evidencia extraída
+    P->>C: Presentar argumento/hallazgo
+    Note over C: Busca lagunas lógicas o sesgos
+    C-->>G: Hallazgo de inconsistencia o vacío
+    G->>G: Reinicia búsqueda con nueva query
+    C-->>P: Validación de consistencia
+    P->>G: Hallazgo validado (Suficiencia)
+```
+
+---
+
+## 🌟 Características Principales
+
+- **Arquitectura Multi-Agente (LangGraph)**: Orquestación de nodos especializados (Planificación $\rightarrow$ Búsqueda $\rightarrow$ Extracción $\rightarrow$ Reflexión $\rightarrow$ Síntesis) con gestión de estado determinista.
+- **Human-in-the-Loop (HITL)**: Interrupciones estratégicas para la validación humana en puntos críticos:
+  - **Aprobación de Plan**: El usuario revisa la estrategia antes de iniciar la búsqueda.
+  - **Revisión de Suficiencia**: El usuario valida si la información es suficiente o si requiere más iteraciones.
+- **Persistencia y Resiliencia**: Gracias a los *checkpointers* de LangGraph, el agente puede reanudar investigaciones largas tras fallos de red o límites de API, manteniendo el hilo de la memoria.
+- **Investigación Multisalto**: Capacidad de realizar búsquedas iterativas y reformular consultas para profundizar en temas complejos.
+- **Generación de Informes de Grado Profesional**: Producción automática de documentos en **Markdown**, **PDF** (vía WeasyPrint con plantillas Jinja2) y visualizaciones de datos (Matplotlib/Plotly).
+
+---
+
+## 🛠️ Stack Tecnológico
+
+| Componente | Tecnología |
+| :--- | :--- |
+| **Orquestación** | [LangGraph](https://langchain-ai.github.io/langgraph/) |
+| **Lenguaje** | Python 3.12+ |
+| **Modelos (LLM)** | OpenAI, Ollama (Local) |
+| **Búsqueda** | DuckDuckGo, Tavily, Serper |
+| **Base de Datos** | SQLite (Local), PostgreSQL (Producción) |
+| **Web Interface** | FastAPI, Uvicorn, SSE (Server-Sent Events) |
+| **Reporting** | Jinja2, WeasyPrint, python-pptx |
+
+---
+
+## ⚙️ Configuración y Variables de Entorno
+
+El sistema utiliza `pydantic-settings` para gestionar la configuración. Es necesario crear un archivo `.env` en la raíz del proyecto basándose en `.env.example`.
+
+### Variables Críticas
+
+| Variable | Descripción | Ejemplo |
+| :--- | :--- | :--- |
+| `DEEP_RESEARCH_LLM_PROVIDER` | Proveedor de LLM (`openai` o `ollama`) | `openai` |
+| `DEEP_RESEARCH_OPENAI_API_KEY` | API Key de OpenAI (si aplica) | `sk-...` |
+| `DEEP_RESEARCH_SEARCH_PROVIDER` | Motor de búsqueda (`duckduckgo`, `tavily`, `serper`) | `tavily` |
+| `DEEP_RESEARCH_TAVILY_API_KEY` | API Key de Tavily (si aplica) | `tvly-...` |
+| `DEEP_RESEARCH_CHECKPOINT_DB_URL` | URL de conexión a la base de datos | `sqlite+aiosqlite:///./.local/db.sqlite3` |
+| `DEEP_RESEARCH_REPORT_OUTPUT_DIR` | Directorio donde se guardan los informes | `./reports` |
+
+---
+
+## 🚀 Guía de Ejecución
+
+### 1. Desarrollo Local (Sin Docker)
+Ideal para pruebas rápidas y desarrollo de lógica:
+
+```bash
+# Instalar dependencias de desarrollo
+pip install -e ".[dev]"
+
+# Ejecutar vía CLI
+deep-research-agent run --query "El futuro de la computación cuántica en 2030"
+
+# Ejecutar la Web App para monitoreo visual
+deep-research-agent-web
+```
+
+### 2. Flujo de Trabajo con Docker (Producción/Integración)
+Para entornos que requieren persistencia con PostgreSQL y una infraestructura completa, utiliza los scripts de automatización:
+
+```bash
+# 1. Preparar el entorno y levantar Postgres
+./scripts/compose-agent.sh bootstrap
+
+# 2. Ejecutar una investigación dentro del contenedor
+./scripts/compose-agent.sh run --query "Análisis de mercado de semiconductores"
+
+# 3. Gestionar la investigación (aprobar/continuar)
+./scripts/compose-agent.sh resume --thread-id <id> --decision approve
+
+# 4. Detener todo el entorno
+./scripts/compose-agent.sh down
+```
+
+---
+
+## 🌐 Interfaz Web y Observabilidad
+
+El proyecto incluye un servidor **FastAPI** que expone:
+- **Dashboard de Investigación**: Visualización en tiempo real del progreso del agente mediante *Server-Sent Events* (SSE).
+- **Gestión de Hilos**: Posibilidad de listar, resumir y reanudar investigaciones pendientes de forma visual.
+- **Logs de Razonamiento**: Seguimiento de los pasos de pensamiento y las herramientas utilizadas por cada nodo del grafo.
+
+---
+
+## 🧩 Capacidades Especializadas (Skills)
+
+El agente está diseñado para ser extensible mediante la integración de **Skills**. Estas permiten al agente:
+- **Interactuar con Obsidian**: Leer, buscar y escribir notas en vaults locales.
+- **Manipulación de JSON Canvas**: Crear mapas mentales y diagramas visuales de la investigación.
+- **Diseño Web**: Auditar interfaces siguiendo guías de diseño profesional.
+- **Análisis de Datos**: Utilizar herramientas de visualización para transformar hallazgos en gráficos técnicos.
+
+---
+
+## 🧪 Testing
+
+Asegura la integridad del sistema ejecutando la suite de pruebas:
+
+```bash
+# Ejecutar todos los tests (pytest)
+pytest
+
+# Ejecutar tests de flujo de runtime específicos
+pytest tests/test_runtime_flow.py -v
+```
+
+---
+
+## 📁 Estructura de Directorios
+
+- `src/deep_research_agent/` : Código fuente principal.
+  - `runtime/` : Motor del grafo y lógica de ejecución.
+  - `services/` : Implementaciones de LLM, búsqueda, extracción y reporte.
+  - `web/` : Servidor web y lógica de la UI.
+  - `domain/` : Modelos de estado y lógica de negocio.
+- `tests/` : Suite de pruebas unitarias e integrales.
+- `scripts/` : Utilidades para Docker y despliegue.
+- `docs/` : Documentación técnica adicional.
