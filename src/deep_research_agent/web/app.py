@@ -118,6 +118,7 @@ def _default_service_factory(settings: AppSettings) -> ResearchRuntimeService:
 def _build_runtime_settings(
     base_settings: AppSettings, request: CreateRunRequest
 ) -> AppSettings:
+    stored = _load_settings()
     update = {
         "model_provider": ModelProvider.OPENAI,
         "model_name": request.model_name or base_settings.model_name,
@@ -129,6 +130,9 @@ def _build_runtime_settings(
         or "local",
         "llm_request_timeout_seconds": request.llm_request_timeout_seconds
         or base_settings.llm_request_timeout_seconds,
+        "max_iterations": request.max_iterations
+        or stored.get("max_iterations")
+        or base_settings.max_iterations,
     }
     return AppSettings.model_validate(
         {**base_settings.model_dump(mode="python"), **update}

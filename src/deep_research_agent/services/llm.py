@@ -102,6 +102,8 @@ def _evidence_context(item: dict[str, Any]) -> dict[str, Any]:
         "evidence_id": item.get("evidence_id"),
         "source_id": item.get("source_id"),
         "source_title": _truncate_text(item.get("source_title")),
+        "source_url": item.get("source_url"),
+        "source_domain": item.get("source_domain"),
         "supports_task_id": item.get("supports_task_id"),
         "claim": _truncate_text(item.get("claim")),
         "excerpt": _truncate_text(item.get("excerpt")),
@@ -197,11 +199,18 @@ def _task_context_for_synthesis(task: PlanTask) -> dict[str, Any]:
 
 
 def _source_context_for_synthesis(source: SourceRecord) -> dict[str, Any]:
+    from urllib import parse
+
+    try:
+        domain = parse.urlparse(source.url).netloc.lower().removeprefix("www.")
+    except Exception:
+        domain = source.canonical_url or source.url
     return {
         "source_id": source.source_id,
         "title": _truncate_text(source.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
         "url": source.url,
         "canonical_url": source.canonical_url,
+        "domain": domain,
         "provider": source.provider.value,
         "source_type": source.source_type.value,
         "task_ids": source.task_ids,
@@ -219,6 +228,8 @@ def _evidence_context_for_synthesis(item: dict[str, Any]) -> dict[str, Any]:
         "source_title": _truncate_text(
             item.get("source_title"), limit=_SYNTHESIS_TEXT_FIELD_CHARS
         ),
+        "source_url": item.get("source_url"),
+        "source_domain": item.get("source_domain"),
         "supports_task_id": item.get("supports_task_id"),
         "claim": _truncate_text(item.get("claim"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
         "excerpt": _truncate_text(
@@ -411,17 +422,38 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
         return await self._generate_structured(
             SynthesizedReport,
             system_prompt=(
-                "You are the final report writer for a deep research workflow. Produce a thorough, analysis-heavy report rather than a brief outline. "
-                "Use only the supplied evidence. Explain concrete implications, comparisons, tensions, caveats, and noteworthy details grounded in that evidence. "
+                "You are a RESEARCH SYNTHESIS ENGINE — not a general-purpose writer. "
+                "Your ONLY source of truth is the EVIDENCE and SOURCES provided in the context below. "
+                "You MUST NOT use any of your pre-existing knowledge, training data, or general information to write the report. "
+                "If the provided evidence does not contain sufficient information to support a claim, you MUST NOT make that claim. "
                 "Return structured JSON matching the schema. Use these exact top-level keys: title, executive_summary, methodology, findings, optional conclusion, final_status. "
-                "Each finding must use title, body_markdown, source_ids, and summary_points. Do not use theme instead of title. Each finding section must include supporting source_ids and substantive body_markdown."
+                "Each finding must use title, body_markdown, source_ids, and summary_points. Do not use theme instead of title. "
+                ""
+                "HARD CONSTRAINTS (never violate):\n"
+                "1. source_ids in EVERY finding MUST contain at least one real source_id from the provided sources context.\n"
+                "2. body_markdown in each finding MUST reference the source domain(s) inline (e.g., 'According to Nature.com...', 'Data from arXiv.org...').\n"
+                "3. NEVER leave source_ids empty — if you cannot find supporting evidence, do NOT include that finding.\n"
+                "4. NEVER invent source_ids — only use source_id values that exist in the context provided.\n"
+                "5. Every claim in body_markdown MUST be traceable to a specific evidence excerpt or source snippet in the context."
             ),
             user_prompt=(
-                "Write a Markdown-ready final report with title, executive_summary, methodology, findings, optional conclusion, and final_status. "
-                "Do not write an outline. Deliver a full report. Executive_summary should be 2-4 paragraphs. Methodology should explain scope, evidence coverage, and limits. "
-                "For findings, cover each major supported theme from the planned work, and make every section rich enough to stand on its own: 2-4 dense paragraphs plus 3-6 summary_points when possible. "
-                "Synthesize across sources, compare evidence when it differs, and call out uncertainties explicitly. Every finding object must use title, not theme. Do not invent source_ids or unsupported claims.\n"
-                f"Context:\n{_compact_json(context)}"
+                "Write a Markdown-ready final research report using ONLY the evidence, source excerpts, and data provided in the Context below.\n"
+                ""
+                "RULES (follow exactly):\n"
+                "1. For EACH finding, identify which source_ids from the 'sources' array support that finding.\n"
+                "2. In the finding's body_markdown, explicitly name the source domain(s) in your text. Example format:\n"
+                "   'According to arXiv.org, ...' or 'A study published on Nature.com found that ...' or 'Wikipedia reports that ...'\n"
+                "3. Every finding's source_ids array must contain at least one valid source_id from the context.\n"
+                "4. If the context has fewer than 2 sources with evidence, generate fewer findings — do NOT fabricate.\n"
+                "5. Executive_summary should summarize key findings and their sources (2-4 paragraphs).\n"
+                "6. Methodology should describe which sources were searched and what evidence was extracted.\n"
+                "7. summary_points must be specific, factual claims backed by evidence — not generic statements.\n"
+                ""
+                "DO NOT write an outline. Deliver a full report.\n"
+                "DO NOT use general knowledge — use ONLY the context below.\n"
+                ""
+                "Context:\n"
+                f"{_compact_json(context)}"
             ),
         )
 

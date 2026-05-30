@@ -15,6 +15,7 @@ defineProps<{
 const query = ref('')
 const modelName = ref('')
 const audience = ref('general')
+const maxIterations = ref<number | undefined>(undefined)
 
 function onSubmit() {
   if (!query.value.trim()) return
@@ -22,6 +23,7 @@ function onSubmit() {
     query: query.value.trim(),
     audience: audience.value || 'general',
     model_name: modelName.value || undefined,
+    max_iterations: maxIterations.value || undefined,
     llm_request_timeout_seconds: 600,
   })
 }
@@ -57,6 +59,18 @@ function onSubmit() {
             {{ m }}
           </option>
         </select>
+      </div>
+      <div class="option-field">
+        <label for="max-iterations">Max Iterations</label>
+        <input
+          id="max-iterations"
+          v-model.number="maxIterations"
+          type="number"
+          class="input-select"
+          min="1"
+          max="20"
+          placeholder="Default"
+        />
       </div>
       <div class="option-field">
         <label for="audience-select">Audience</label>

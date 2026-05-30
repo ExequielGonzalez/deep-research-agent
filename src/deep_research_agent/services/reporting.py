@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
+from urllib import parse
 
 from deep_research_agent.domain.models import CitationRecord, ReportSection, SectionStatus, SourceRecord, SynthesizedReport
 from deep_research_agent.services.search import stable_hash
@@ -85,7 +86,15 @@ class ReportFormatter:
                 body_lines.extend(["### Key Points", "", *(f"- {point}" for point in section.summary_points), ""])
         body_lines.extend(["## Sources", ""])
         for citation in citations:
-            body_lines.append(f"- {citation.marker} [{citation.title}]({citation.url})")
+            source = source_map.get(citation.source_id)
+            if source:
+                try:
+                    domain = parse.urlparse(source.url).netloc.lower().removeprefix("www.")
+                except Exception:
+                    domain = citation.url
+                body_lines.append(f"- {citation.marker} [{citation.title}]({citation.url}) — *{domain}*")
+            else:
+                body_lines.append(f"- {citation.marker} [{citation.title}]({citation.url})")
         body_lines.append("")
 
         return FormattedReport(

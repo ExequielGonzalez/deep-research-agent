@@ -167,7 +167,7 @@ function threadId() {
         <!-- Progress Bar -->
         <ProgressBar
           :current="((activeRun?.state as Record<string, unknown>)?.iteration_count as number) ?? 0"
-          :max="6"
+          :max="((activeRun?.state as Record<string, unknown>)?.max_iterations as number) ?? 6"
           label="Iteration"
         />
 

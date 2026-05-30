@@ -9,6 +9,16 @@ function truncateUrl(url: string, max = 50): string {
   if (url.length <= max) return url
   return url.slice(0, max - 3) + '...'
 }
+
+function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace(/^www\./, '')
+  }
+  catch {
+    return url
+  }
+}
 </script>
 
 <template>
@@ -42,8 +52,8 @@ function truncateUrl(url: string, max = 50): string {
         </a>
         <p v-if="source.snippet" class="source-snippet">{{ source.snippet }}</p>
         <div class="source-meta">
-          <span class="source-type">{{ source.source_type }}</span>
-          <span class="source-provider">{{ source.provider }}</span>
+          <span class="source-domain">{{ extractDomain(source.url) }}</span>
+          <span v-if="source.provider !== 'none'" class="source-provider">{{ source.provider }}</span>
         </div>
       </article>
     </div>
@@ -140,6 +150,16 @@ function truncateUrl(url: string, max = 50): string {
   background: var(--line);
   color: var(--muted);
   text-transform: capitalize;
+}
+
+.source-domain {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
 }
 
 .empty-state {

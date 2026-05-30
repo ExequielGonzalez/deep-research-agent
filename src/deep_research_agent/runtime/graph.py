@@ -384,15 +384,24 @@ class ResearchGraphNodes:
         )
 
     def _evidence_summary(self, state: ResearchGraphState) -> list[dict[str, Any]]:
+        from urllib import parse
+
         source_map = {source.source_id: source for source in state.get("sources", [])}
         summary: list[dict[str, Any]] = []
         for item in sorted(state.get("evidence", []), key=lambda evidence: (evidence.supports_task_id or "", evidence.source_id, evidence.evidence_id)):
             source = source_map.get(item.source_id)
+            source_url = source.url if source else None
+            try:
+                source_domain = parse.urlparse(source_url).netloc.lower().removeprefix("www.") if source_url else None
+            except Exception:
+                source_domain = None
             summary.append(
                 {
                     "evidence_id": item.evidence_id,
                     "source_id": item.source_id,
                     "source_title": source.title if source else None,
+                    "source_url": source_url,
+                    "source_domain": source_domain,
                     "supports_task_id": item.supports_task_id,
                     "claim": item.claim,
                     "excerpt": item.excerpt,
