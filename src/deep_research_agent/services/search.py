@@ -37,8 +37,8 @@ class DuckDuckGoSearchService(SearchService):
                 return response.read().decode("utf-8", errors="ignore")
 
         try:
-            html = await asyncio.to_thread(_fetch)
-        except Exception:  # pragma: no cover - network availability
+            html = await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=35)
+        except (TimeoutError, asyncio.TimeoutError, Exception):  # pragma: no cover - network availability
             return []
 
         results: list[SearchResult] = []
@@ -159,7 +159,12 @@ async def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str] 
         except error.URLError as exc:  # pragma: no cover - provider/network behavior
             raise ProviderConfigurationError(f"Search request failed: {exc.reason}") from exc
 
-    return await asyncio.to_thread(_send)
+    task = asyncio.create_task(asyncio.to_thread(_send))
+    try:
+        return await asyncio.wait_for(task, timeout=35)
+    except (asyncio.TimeoutError, TimeoutError):
+        task.cancel()
+        raise ProviderConfigurationError(f"Search request timed out after 35s: {url}")
 
 
 

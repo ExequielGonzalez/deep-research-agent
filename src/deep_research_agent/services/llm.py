@@ -581,7 +581,14 @@ async def _http_json_request(
                 f"Provider request failed: {exc.reason}"
             ) from exc
 
-    return await asyncio.to_thread(_send)
+    task = asyncio.create_task(asyncio.to_thread(_send))
+    try:
+        return await asyncio.wait_for(task, timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        task.cancel()
+        raise ProviderConfigurationError(
+            f"Provider request timed out after {timeout_seconds}s: {url}"
+        )
 
 
 def _parse_schema_response(schema: type[SchemaT], raw_content: Any) -> SchemaT:

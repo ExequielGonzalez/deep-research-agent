@@ -78,8 +78,8 @@ class ContentExtractor:
             return raw
 
         try:
-            return await asyncio.to_thread(_fetch)
-        except Exception:  # pragma: no cover - network availability
+            return await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=35)
+        except (TimeoutError, asyncio.TimeoutError, Exception):  # pragma: no cover - network availability
             return ""
 
 

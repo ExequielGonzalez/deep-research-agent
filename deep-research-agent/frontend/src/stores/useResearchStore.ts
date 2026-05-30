@@ -12,6 +12,7 @@ import type {
   RunListItem,
   EventLogEntry,
   HumanDecisionType,
+  HumanReviewRequest,
   CreateRunRequest,
 } from '@/types'
 import { api, ApiError } from '@/services/api'
@@ -122,8 +123,8 @@ export const useResearchStore = defineStore('research', () => {
 
   // ── SSE Connection ─────────────────────────────────────────────────
 
-  function connectToSse(threadId: string) {
-    if (isConnecting.value || isConnected.value) return
+  function connectToSse(threadId: string, force = false) {
+    if (!force && (isConnecting.value || isConnected.value)) return
     disconnectSse()
 
     isConnecting.value = true
@@ -254,6 +255,20 @@ export const useResearchStore = defineStore('research', () => {
         addEvent(event.thread_id, event)
         const snapData = (event as SseSnapshotEvent).data
         const state = snapData.state ?? {}
+
+        // Prefer pending_human_input at the top level; fall back to interrupts array
+        let pendingInput: HumanReviewRequest | null = null
+        if (snapData.pending_human_input) {
+          pendingInput = snapData.pending_human_input as HumanReviewRequest
+        } else if (
+          Array.isArray(snapData.interrupts) &&
+          snapData.interrupts.length > 0
+        ) {
+          pendingInput = snapData.interrupts[0] as HumanReviewRequest
+        }
+
+        // Handle both initial snapshot (has runtime_config) and live snapshot (no config field)
+        const runtimeConfig = (snapData.runtime_config ?? snapData.config ?? {}) as Record<string, unknown>
         const run = {
           thread_id: (state.thread_id as string) ?? event.thread_id,
           query: (state.query as string) ?? '',
@@ -261,12 +276,9 @@ export const useResearchStore = defineStore('research', () => {
           created_at: (state.created_at as string) ?? '',
           updated_at: new Date().toISOString(),
           is_running: (state.status as string) === 'running',
-          runtime_config: snapData.config as Record<string, unknown>,
+          runtime_config: runtimeConfig,
           state: state,
-          pending_human_input:
-            Array.isArray(snapData.interrupt) && snapData.interrupt.length > 0
-              ? snapData.interrupt[0]
-              : null,
+          pending_human_input: pendingInput,
         } as ResearchRun
         latestRun.value = run
         upsertRun(run)
@@ -338,7 +350,15 @@ export const useResearchStore = defineStore('research', () => {
   ) {
     runError.value = null
     try {
-      return await api.submitDecision(threadId, { decision, summary })
+      const updatedRun = await api.submitDecision(threadId, { decision, summary })
+      // Immediately update local state so the UI reflects the resumed status
+      if (updatedRun) {
+        latestRun.value = updatedRun
+        upsertRun(updatedRun)
+      }
+      // Force-reconnect SSE to hear new snapshot events from the resumed graph
+      connectToSse(threadId, true)
+      return updatedRun
     } catch (err) {
       runError.value =
         err instanceof ApiError ? err.message : 'Failed to submit decision'

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
@@ -172,25 +173,45 @@ class ResearchRuntimeService:
             )
 
             try:
-                async for state_snapshot in graph.astream(
-                    graph_input,
-                    config={"configurable": {"thread_id": thread_id}},
-                    stream_mode="values",
-                ):
-                    latest_result = self._persist_final_report_if_available(self._build_command_result(
-                        result=state_snapshot,
-                        thread_id=thread_id,
-                        default_query=default_query,
-                        message_prefix=message_prefix,
-                    ))
-                    await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))
-                    emit_runtime_event(
-                        "snapshot",
-                        thread_id=thread_id,
-                        snapshot=latest_result.model_dump(mode="json"),
-                    )
-                    if existing is None:
-                        existing = self._record_from_result(latest_result)
+                graph_timeout = max(60, self._settings.llm_request_timeout_seconds * 3)
+                async with asyncio.timeout(graph_timeout):
+                    async for state_snapshot in graph.astream(
+                        graph_input,
+                        config={"configurable": {"thread_id": thread_id}},
+                        stream_mode="values",
+                    ):
+                        latest_result = self._persist_final_report_if_available(self._build_command_result(
+                            result=state_snapshot,
+                            thread_id=thread_id,
+                            default_query=default_query,
+                            message_prefix=message_prefix,
+                        ))
+                        await run_store.upsert_run(self._record_from_result(latest_result, existing=existing))
+                        emit_runtime_event(
+                            "snapshot",
+                            thread_id=thread_id,
+                            snapshot=latest_result.model_dump(mode="json"),
+                        )
+                        if existing is None:
+                            existing = self._record_from_result(latest_result)
+            except TimeoutError:
+                timeout_state = dict(existing.latest_state) if existing else {}
+                timeout_state.update({"status": RunStatus.FAILED.value, "last_error": "Graph execution timed out after reaching iteration limit or hanging on a service call."})
+                timeout_result = RuntimeCommandResult(
+                    thread_id=thread_id,
+                    query=default_query,
+                    status=RunStatus.FAILED,
+                    message=f"{message_prefix} and timed out after {graph_timeout}s.",
+                    state=timeout_state,
+                    resume_supported=False,
+                )
+                await run_store.upsert_run(self._record_from_result(timeout_result, existing=existing))
+                emit_runtime_event(
+                    "snapshot",
+                    thread_id=thread_id,
+                    snapshot=timeout_result.model_dump(mode="json"),
+                )
+                return timeout_result
             except Exception as exc:
                 failed_state = dict(existing.latest_state) if existing else {}
                 failed_state.update({"status": RunStatus.FAILED.value, "last_error": str(exc)})

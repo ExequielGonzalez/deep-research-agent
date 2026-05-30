@@ -172,9 +172,16 @@ export interface SseSnapshotEvent {
   type: 'snapshot'
   thread_id: string
   data: {
+    thread_id: string
+    query: string
+    status: RunStatus
+    message: string
+    pending_human_input?: HumanReviewRequest | null
+    interrupts: unknown[]
     state: Record<string, unknown>
-    config: Record<string, unknown>
-    interrupt: unknown[]
+    runtime_config?: Record<string, unknown>
+    resume_supported: boolean
+    [key: string]: unknown
   }
 }
 
