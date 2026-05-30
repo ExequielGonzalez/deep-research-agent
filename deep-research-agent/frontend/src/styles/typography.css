@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Typography — Additional type styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.font-serif {
+  font-family: var(--font-display);
+}
+
+.font-sans {
+  font-family: var(--font-body);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.text-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.text-eyebrow {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.text-subtle {
+  color: var(--muted);
+  font-size: 0.925rem;
+  line-height: 1.55;
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Report body typography */
+
+.report-body {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.report-body h1,
+.report-body h2,
+.report-body h3,
+.report-body h4 {
+  font-family: var(--font-display);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+.report-body h1 { font-size: 1.75rem; }
+.report-body h2 { font-size: 1.4rem; border-bottom: 1px solid var(--line); padding-bottom: 0.3em; }
+.report-body h3 { font-size: 1.15rem; }
+
+.report-body p {
+  margin-bottom: 1em;
+}
+
+.report-body ul,
+.report-body ol {
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+.report-body li {
+  margin-bottom: 0.25em;
+}
+
+.report-body blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.report-body code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--line);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+.report-body pre {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+.report-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.report-body hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 2em 0;
+}
+
+.report-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+}
+
+.report-body th,
+.report-body td {
+  border: 1px solid var(--line-strong);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.report-body th {
+  background: var(--page-soft);
+  font-weight: 600;
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from deep_research_agent.domain.models import (
@@ -25,7 +27,35 @@ from deep_research_agent.domain.models import (
 from deep_research_agent.runtime.events import runtime_event_scope
 from deep_research_agent.runtime.service import ResearchRuntimeService
 from deep_research_agent.settings import AppSettings, get_settings
-from deep_research_agent.web.ui import INDEX_HTML
+
+# Try to load Vue frontend build; fall back to legacy embedded UI
+# Docker: __file__ = /usr/local/lib/python3.12/site-packages/deep_research_agent/web/app.py
+# Vue dist is at /app/frontend/dist
+# Local dev: __file__ = src/deep_research_agent/web/app.py, Vue at deep-research-agent/frontend/dist
+_FRONTEND_DIR = "/app/frontend/dist"
+_FRONTEND_INDEX = os.path.join(_FRONTEND_DIR, "index.html")
+_USE_VUE_FRONTEND = os.path.isfile(_FRONTEND_INDEX)
+
+if not _USE_VUE_FRONTEND:
+    # Local dev path
+    _LOCAL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "dist")
+    _LOCAL_INDEX = os.path.join(_LOCAL_DIR, "index.html")
+    if os.path.isfile(_LOCAL_INDEX):
+        _FRONTEND_DIR = _LOCAL_DIR
+        _FRONTEND_INDEX = _LOCAL_INDEX
+        _USE_VUE_FRONTEND = True
+
+if not _USE_VUE_FRONTEND:
+    import logging
+    logging.warning(
+        "Vue frontend not found at %s. Falling back to legacy UI.",
+        _FRONTEND_INDEX,
+    )
+
+if _USE_VUE_FRONTEND:
+    INDEX_HTML = open(_FRONTEND_INDEX, "r", encoding="utf-8").read()
+else:
+    from deep_research_agent.web.ui import INDEX_HTML
 
 ServiceFactory = Callable[[AppSettings], ResearchRuntimeService]
 
@@ -328,10 +358,6 @@ def create_app(
     def _read_service() -> ResearchRuntimeService:
         return runtime_service_factory(base_settings)
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        return INDEX_HTML
-
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -573,6 +599,44 @@ def create_app(
         return _serialize_run(
             run, is_running=True, runtime_config=manager.runtime_config(thread_id)
         )
+
+    # ── Vue frontend static files (mounted after all API routes) ──────────
+    if _USE_VUE_FRONTEND:
+        # /assets/* → JS, CSS, fonts
+        app.mount("/assets", StaticFiles(directory=os.path.join(_FRONTEND_DIR, "assets")), name="assets")
+
+        # Root-level static files (manifest, SW, workbox)
+        _fd = _FRONTEND_DIR  # capture for closure
+
+        @app.get("/manifest.webmanifest", include_in_schema=False)
+        async def _manifest():
+            from fastapi.responses import FileResponse
+            return FileResponse(os.path.join(_fd, "manifest.webmanifest"))
+
+        @app.get("/registerSW.js", include_in_schema=False)
+        async def _reg_sw():
+            from fastapi.responses import FileResponse
+            return FileResponse(os.path.join(_fd, "registerSW.js"))
+
+        @app.get("/sw.js", include_in_schema=False)
+        async def _sw():
+            from fastapi.responses import FileResponse
+            return FileResponse(os.path.join(_fd, "sw.js"))
+
+        @app.get("/workbox-{name}.js", include_in_schema=False)
+        async def _workbox(name: str):
+            from fastapi.responses import FileResponse
+            fp = os.path.join(_fd, f"workbox-{name}.js")
+            if os.path.isfile(fp):
+                return FileResponse(fp)
+            return HTMLResponse(content=INDEX_HTML)
+
+        # SPA fallback — serve index.html for any non-API route
+        @app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+        async def spa_fallback(full_path: str) -> str:
+            if full_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not found")
+            return INDEX_HTML
 
     return app
 

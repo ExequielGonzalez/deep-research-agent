@@ -1,0 +1,258 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Deep Research Agent — Design System
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@import url('./typography.css');
+
+/* ── Custom Properties ─────────────────────────────────────────────────── */
+
+:root {
+  /* Color Palette — Academic Journal */
+  --page: #f7f4ed;
+  --page-soft: #f0ece3;
+  --surface: rgba(255, 253, 248, 0.95);
+  --surface-strong: #fffdf8;
+  --ink: #1a1814;
+  --ink-soft: #3a352e;
+  --muted: #6b6358;
+  --muted-soft: #9c9488;
+  --line: rgba(26, 24, 20, 0.08);
+  --line-strong: rgba(26, 24, 20, 0.14);
+
+  /* Accent — Deep Teal */
+  --accent: #0d7366;
+  --accent-soft: rgba(13, 115, 102, 0.1);
+  --accent-medium: rgba(13, 115, 102, 0.2);
+  --accent-strong: #095c51;
+  --accent-bright: #12a08c;
+
+  /* Semantic Colors */
+  --warm: #c27800;
+  --warm-soft: rgba(194, 120, 0, 0.1);
+  --warm-medium: rgba(194, 120, 0, 0.18);
+  --danger: #c1121f;
+  --danger-soft: rgba(193, 18, 31, 0.1);
+  --danger-medium: rgba(193, 18, 31, 0.16);
+  --success: #05844e;
+  --success-soft: rgba(5, 132, 78, 0.1);
+  --success-medium: rgba(5, 132, 78, 0.16);
+
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+
+  /* Spacing Scale (0.25rem increments) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(26, 24, 20, 0.06);
+  --shadow: 0 4px 12px rgba(26, 24, 20, 0.08);
+  --shadow-lg: 0 12px 32px rgba(26, 24, 20, 0.12);
+  --shadow-xl: 0 20px 48px rgba(26, 24, 20, 0.16);
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition: 200ms ease;
+  --transition-slow: 350ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Z-Index Scale */
+  --z-base: 1;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-overlay: 30;
+  --z-modal: 40;
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink);
+  background-color: var(--page);
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(13, 115, 102, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(194, 120, 0, 0.05) 0%, transparent 50%);
+  background-attachment: fixed;
+  min-height: 100dvh;
+}
+
+#app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Typography Base ───────────────────────────────────────────────────── */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+h1 { font-size: clamp(1.8rem, 3.5vw, 2.8rem); }
+h2 { font-size: clamp(1.4rem, 2.5vw, 2rem); }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.1rem; }
+
+p { margin: 0; }
+small { font-size: 0.875rem; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--accent-strong);
+}
+
+/* ── Selection ─────────────────────────────────────────────────────────── */
+
+::selection {
+  background: var(--accent-medium);
+  color: var(--ink);
+}
+
+/* ── Focus ─────────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted-soft);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* ── Utility Classes ───────────────────────────────────────────────────── */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-slow) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp var(--transition-slow) forwards;
+}
+
+/* ── Media Queries ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

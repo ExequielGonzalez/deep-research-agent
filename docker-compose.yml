@@ -23,6 +23,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "8000:8000"
     environment:
       DEEP_RESEARCH_MODEL_PROVIDER: ${DEEP_RESEARCH_MODEL_PROVIDER:-openai}
       DEEP_RESEARCH_MODEL_NAME: ${DEEP_RESEARCH_MODEL_NAME:-gpt-4.1-mini}
