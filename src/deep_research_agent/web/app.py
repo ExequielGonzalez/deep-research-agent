@@ -7,14 +7,21 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
-from urllib import error as urllib_error, request as urllib_request
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from deep_research_agent.domain.models import HumanDecisionType, ModelProvider, ResearchRequest, RunRecord, RunStatus
+from deep_research_agent.domain.models import (
+    HumanDecisionType,
+    ModelProvider,
+    ResearchRequest,
+    RunRecord,
+    RunStatus,
+)
 from deep_research_agent.runtime.events import runtime_event_scope
 from deep_research_agent.runtime.service import ResearchRuntimeService
 from deep_research_agent.settings import AppSettings, get_settings
@@ -42,22 +49,65 @@ class DecisionRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class SettingsRequest(BaseModel):
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    ollama_base_url: str = ""
+    default_search_provider: str = "none"
+    tavily_api_key: str = ""
+    serper_api_key: str = ""
+    max_iterations: int = 6
+    max_sources_per_task: int = 8
+    total_token_budget: int = 120_000
+    max_notes: int = 200
+
+
+_SETTINGS_PATH = ".local/settings.json"
+
+
+def _load_settings() -> dict[str, Any]:
+    try:
+        with open(_SETTINGS_PATH, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_settings(data: dict[str, Any]) -> None:
+    import os
+
+    os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
+    with open(_SETTINGS_PATH, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def _default_service_factory(settings: AppSettings) -> ResearchRuntimeService:
     return ResearchRuntimeService(settings)
 
 
-def _build_runtime_settings(base_settings: AppSettings, request: CreateRunRequest) -> AppSettings:
+def _build_runtime_settings(
+    base_settings: AppSettings, request: CreateRunRequest
+) -> AppSettings:
     update = {
         "model_provider": ModelProvider.OPENAI,
         "model_name": request.model_name or base_settings.model_name,
-        "openai_base_url": (request.openai_base_url or base_settings.openai_base_url).rstrip("/"),
-        "openai_api_key": request.openai_api_key or base_settings.openai_api_key or "local",
-        "llm_request_timeout_seconds": request.llm_request_timeout_seconds or base_settings.llm_request_timeout_seconds,
+        "openai_base_url": (
+            request.openai_base_url or base_settings.openai_base_url
+        ).rstrip("/"),
+        "openai_api_key": request.openai_api_key
+        or base_settings.openai_api_key
+        or "local",
+        "llm_request_timeout_seconds": request.llm_request_timeout_seconds
+        or base_settings.llm_request_timeout_seconds,
     }
-    return AppSettings.model_validate({**base_settings.model_dump(mode="python"), **update})
+    return AppSettings.model_validate(
+        {**base_settings.model_dump(mode="python"), **update}
+    )
 
 
-def _serialize_run(record: RunRecord, *, is_running: bool, runtime_config: dict[str, Any] | None = None) -> dict[str, Any]:
+def _serialize_run(
+    record: RunRecord, *, is_running: bool, runtime_config: dict[str, Any] | None = None
+) -> dict[str, Any]:
     payload = record.model_dump(mode="json")
     payload["state"] = payload["latest_state"]
     payload["interrupts"] = payload["latest_interrupts"]
@@ -73,6 +123,7 @@ def _fetch_model_catalog(base_url: str, api_key: str) -> list[str]:
         headers={
             "Accept": "application/json",
             "Authorization": f"Bearer {api_key}",
+            "User-Agent": "deep-research-agent/0.1.0",
         },
         method="GET",
     )
@@ -81,9 +132,13 @@ def _fetch_model_catalog(base_url: str, api_key: str) -> list[str]:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
-        raise HTTPException(status_code=exc.code, detail=detail or "Model catalog request failed.") from exc
+        raise HTTPException(
+            status_code=exc.code, detail=detail or "Model catalog request failed."
+        ) from exc
     except urllib_error.URLError as exc:
-        raise HTTPException(status_code=502, detail=f"Model catalog request failed: {exc.reason}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Model catalog request failed: {exc.reason}"
+        ) from exc
     return [item.get("id") for item in payload.get("data", []) if item.get("id")]
 
 
@@ -114,7 +169,9 @@ class RunExecutionManager:
         self._tasks: dict[str, ActiveRunTask] = {}
         self._settings_by_thread: dict[str, AppSettings] = {}
         self._event_history: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        self._subscribers: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
+        self._subscribers: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(
+            list
+        )
 
     def is_running(self, thread_id: str) -> bool:
         active = self._tasks.get(thread_id)
@@ -160,13 +217,22 @@ class RunExecutionManager:
         for subscriber in list(self._subscribers.get(thread_id, [])):
             subscriber.put_nowait(payload)
 
-    def launch_start(self, *, thread_id: str, request: ResearchRequest, max_iterations: int | None, settings: AppSettings) -> None:
+    def launch_start(
+        self,
+        *,
+        thread_id: str,
+        request: ResearchRequest,
+        max_iterations: int | None,
+        settings: AppSettings,
+    ) -> None:
         self._ensure_not_running(thread_id)
         self._settings_by_thread[thread_id] = settings
         service = self._service_factory(settings)
 
         async def _runner() -> None:
-            await service.start_run(request, max_iterations=max_iterations, thread_id=thread_id)
+            await service.start_run(
+                request, max_iterations=max_iterations, thread_id=thread_id
+            )
 
         self._register_task(thread_id, settings, _runner())
 
@@ -194,35 +260,68 @@ class RunExecutionManager:
 
     def _ensure_not_running(self, thread_id: str) -> None:
         if self.is_running(thread_id):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This run is already executing.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This run is already executing.",
+            )
 
-    def _register_task(self, thread_id: str, settings: AppSettings, coroutine: Any) -> None:
+    def _register_task(
+        self, thread_id: str, settings: AppSettings, coroutine: Any
+    ) -> None:
         async def _runner_with_events() -> None:
-            self.publish(thread_id, {"event": "run_task_started", "message": "Background execution started."})
+            self.publish(
+                thread_id,
+                {
+                    "event": "run_task_started",
+                    "message": "Background execution started.",
+                },
+            )
             with runtime_event_scope(lambda event: self.publish(thread_id, event)):
                 await coroutine
 
-        task = asyncio.create_task(_runner_with_events(), name=f"deep-research:{thread_id}")
+        task = asyncio.create_task(
+            _runner_with_events(), name=f"deep-research:{thread_id}"
+        )
         self._tasks[thread_id] = ActiveRunTask(task=task, settings=settings)
 
         def _cleanup(done_task: asyncio.Task[None]) -> None:
             try:
                 done_task.exception()
             except asyncio.CancelledError:
-                self.publish(thread_id, {"event": "run_task_cancelled", "message": "Background execution was cancelled."})
+                self.publish(
+                    thread_id,
+                    {
+                        "event": "run_task_cancelled",
+                        "message": "Background execution was cancelled.",
+                    },
+                )
             except Exception as exc:
-                self.publish(thread_id, {"event": "run_task_failed", "message": str(exc)})
+                self.publish(
+                    thread_id, {"event": "run_task_failed", "message": str(exc)}
+                )
             else:
-                self.publish(thread_id, {"event": "run_task_finished", "message": "Background execution finished."})
+                self.publish(
+                    thread_id,
+                    {
+                        "event": "run_task_finished",
+                        "message": "Background execution finished.",
+                    },
+                )
             self._tasks.pop(thread_id, None)
 
         task.add_done_callback(_cleanup)
 
 
-def create_app(*, settings: AppSettings | None = None, service_factory: ServiceFactory | None = None) -> FastAPI:
+def create_app(
+    *,
+    settings: AppSettings | None = None,
+    service_factory: ServiceFactory | None = None,
+) -> FastAPI:
     base_settings = settings or get_settings()
     runtime_service_factory = service_factory or _default_service_factory
-    manager = RunExecutionManager(base_settings=base_settings, service_factory=runtime_service_factory)
+    manager = RunExecutionManager(
+        base_settings=base_settings, service_factory=runtime_service_factory
+    )
 
     app = FastAPI(title="Deep Research Console", version="0.1.0")
 
@@ -247,9 +346,61 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
             "suggested_local_base_url": "http://127.0.0.1:8085/v1",
         }
 
+    @app.get("/api/settings")
+    async def get_app_settings() -> dict[str, Any]:
+        stored = _load_settings()
+        return {
+            "openai_api_key": stored.get("openai_api_key", ""),
+            "openai_base_url": stored.get(
+                "openai_base_url", base_settings.openai_base_url
+            ),
+            "ollama_base_url": stored.get(
+                "ollama_base_url", base_settings.ollama_base_url
+            ),
+            "default_search_provider": stored.get("default_search_provider", "none"),
+            "max_iterations": stored.get(
+                "max_iterations", base_settings.max_iterations
+            ),
+            "max_sources_per_task": stored.get(
+                "max_sources_per_task", base_settings.max_sources_per_task
+            ),
+            "total_token_budget": stored.get(
+                "total_token_budget", base_settings.total_token_budget
+            ),
+            "max_notes": stored.get("max_notes", base_settings.max_notes),
+        }
+
+    @app.post("/api/settings")
+    async def post_app_settings(request: SettingsRequest) -> dict[str, str]:
+        stored = _load_settings()
+        if request.openai_api_key:
+            stored["openai_api_key"] = request.openai_api_key
+        if request.openai_base_url:
+            stored["openai_base_url"] = request.openai_base_url
+        if request.ollama_base_url:
+            stored["ollama_base_url"] = request.ollama_base_url
+        if request.default_search_provider:
+            stored["default_search_provider"] = request.default_search_provider
+        if request.tavily_api_key:
+            stored["tavily_api_key"] = request.tavily_api_key
+        if request.serper_api_key:
+            stored["serper_api_key"] = request.serper_api_key
+        if request.max_iterations and request.max_iterations != 6:
+            stored["max_iterations"] = request.max_iterations
+        if request.max_sources_per_task and request.max_sources_per_task != 8:
+            stored["max_sources_per_task"] = request.max_sources_per_task
+        if request.total_token_budget and request.total_token_budget != 120_000:
+            stored["total_token_budget"] = request.total_token_budget
+        if request.max_notes and request.max_notes != 200:
+            stored["max_notes"] = request.max_notes
+        _save_settings(stored)
+        return {"status": "ok"}
+
     @app.get("/api/models")
-    async def model_catalog(base_url: str = Query(default="http://127.0.0.1:8085/v1")) -> dict[str, Any]:
-        models = _fetch_model_catalog(base_url, base_settings.openai_api_key or "local")
+    async def model_catalog() -> dict[str, Any]:
+        api_key = base_settings.openai_api_key or "local"
+        base_url = base_settings.openai_base_url
+        models = _fetch_model_catalog(base_url, api_key)
         return {"base_url": base_url.rstrip("/"), "models": models}
 
     @app.get("/api/runs")
@@ -257,7 +408,11 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
         runs = await _read_service().list_runs(limit=limit)
         return {
             "runs": [
-                _serialize_run(run, is_running=manager.is_running(run.thread_id), runtime_config=manager.runtime_config(run.thread_id))
+                _serialize_run(
+                    run,
+                    is_running=manager.is_running(run.thread_id),
+                    runtime_config=manager.runtime_config(run.thread_id),
+                )
                 for run in runs
             ]
         }
@@ -266,18 +421,29 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
     async def get_run(thread_id: str) -> dict[str, Any]:
         run = await _read_service().get_run(thread_id)
         if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
-        return _serialize_run(run, is_running=manager.is_running(thread_id), runtime_config=manager.runtime_config(thread_id))
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id"
+            )
+        return _serialize_run(
+            run,
+            is_running=manager.is_running(thread_id),
+            runtime_config=manager.runtime_config(thread_id),
+        )
 
     @app.get("/api/runs/{thread_id}/report.md")
     async def export_run_markdown(thread_id: str) -> PlainTextResponse:
         run = await _read_service().get_run(thread_id)
         if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id"
+            )
 
         markdown = run.latest_state.get("final_report_markdown")
         if not isinstance(markdown, str) or not markdown.strip():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This run does not have a completed markdown report yet.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This run does not have a completed markdown report yet.",
+            )
 
         title = run.latest_state.get("final_report_title") or run.query or thread_id
         filename = f"{_slugify_filename(str(title))}-{thread_id[:8]}.md"
@@ -296,14 +462,20 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
         runtime_service = _read_service()
         run = await runtime_service.get_run(thread_id)
         if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id"
+            )
 
         async def event_stream():
             current = await runtime_service.get_run(thread_id)
             if current is not None:
                 yield _sse_message(
                     "snapshot",
-                    _serialize_run(current, is_running=manager.is_running(thread_id), runtime_config=manager.runtime_config(thread_id)),
+                    _serialize_run(
+                        current,
+                        is_running=manager.is_running(thread_id),
+                        runtime_config=manager.runtime_config(thread_id),
+                    ),
                 )
             for event in manager.recent_events(thread_id, limit=history):
                 if event.get("event") == "snapshot":
@@ -327,8 +499,15 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
                         if snapshot is not None:
                             yield _sse_message("snapshot", snapshot)
                             status_value = snapshot.get("status")
-                            if status_value in {RunStatus.COMPLETED.value, RunStatus.FAILED.value, RunStatus.CANCELLED.value}:
-                                yield _sse_message("stream_end", {"thread_id": thread_id, "status": status_value})
+                            if status_value in {
+                                RunStatus.COMPLETED.value,
+                                RunStatus.FAILED.value,
+                                RunStatus.CANCELLED.value,
+                            }:
+                                yield _sse_message(
+                                    "stream_end",
+                                    {"thread_id": thread_id, "status": status_value},
+                                )
                                 break
                         continue
 
@@ -361,16 +540,25 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
             max_iterations=request.max_iterations,
             settings=runtime_settings,
         )
-        return _serialize_run(run, is_running=True, runtime_config=manager.runtime_config(thread_id))
+        return _serialize_run(
+            run, is_running=True, runtime_config=manager.runtime_config(thread_id)
+        )
 
     @app.post("/api/runs/{thread_id}/decisions", status_code=status.HTTP_202_ACCEPTED)
-    async def submit_decision(thread_id: str, request: DecisionRequest) -> dict[str, Any]:
+    async def submit_decision(
+        thread_id: str, request: DecisionRequest
+    ) -> dict[str, Any]:
         runtime_service = _read_service()
         run = await runtime_service.get_run(thread_id)
         if run is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Unknown thread_id"
+            )
         if run.status is not RunStatus.INTERRUPTED or run.pending_human_input is None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This run is not waiting for human input.")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This run is not waiting for human input.",
+            )
         if request.decision not in run.pending_human_input.allowed_decisions:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -382,13 +570,18 @@ def create_app(*, settings: AppSettings | None = None, service_factory: ServiceF
             summary=request.summary,
             payload=request.payload,
         )
-        return _serialize_run(run, is_running=True, runtime_config=manager.runtime_config(thread_id))
+        return _serialize_run(
+            run, is_running=True, runtime_config=manager.runtime_config(thread_id)
+        )
 
     return app
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="deep-research-agent-web", description="Local web console for the deep research runtime.")
+    parser = argparse.ArgumentParser(
+        prog="deep-research-agent-web",
+        description="Local web console for the deep research runtime.",
+    )
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
     return parser

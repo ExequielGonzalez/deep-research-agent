@@ -1,0 +1,5 @@
+services:
+  app:
+    entrypoint: ["python", "-m", "deep_research_agent.web"]
+    ports:
+      - "8000:8000"

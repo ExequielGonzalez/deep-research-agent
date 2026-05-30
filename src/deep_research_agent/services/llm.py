@@ -4,7 +4,8 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
-from urllib import error, request as urllib_request
+from urllib import error
+from urllib import request as urllib_request
 
 from pydantic import BaseModel, ValidationError
 
@@ -74,7 +75,9 @@ def _task_context(task: PlanTask) -> dict[str, Any]:
         "status": task.status.value,
         "priority": task.priority,
         "parent_task_id": task.parent_task_id,
-        "success_criteria": [_truncate_text(item) for item in task.success_criteria[:3]],
+        "success_criteria": [
+            _truncate_text(item) for item in task.success_criteria[:3]
+        ],
     }
 
 
@@ -88,7 +91,9 @@ def _source_context(source: SourceRecord) -> dict[str, Any]:
         "source_type": source.source_type.value,
         "task_ids": source.task_ids,
         "snippet": _truncate_text(source.snippet),
-        "published_at": source.published_at.isoformat() if source.published_at else None,
+        "published_at": source.published_at.isoformat()
+        if source.published_at
+        else None,
     }
 
 
@@ -107,7 +112,9 @@ def _evidence_context(item: dict[str, Any]) -> dict[str, Any]:
 def _reflection_context(reflection: ReflectionOutput) -> dict[str, Any]:
     return {
         "summary": _truncate_text(reflection.summary),
-        "knowledge_gaps": [_truncate_text(item) for item in reflection.knowledge_gaps[:6]],
+        "knowledge_gaps": [
+            _truncate_text(item) for item in reflection.knowledge_gaps[:6]
+        ],
         "covered_task_ids": reflection.covered_task_ids,
         "needs_more_research": reflection.needs_more_research,
         "needs_human_input": reflection.needs_human_input,
@@ -120,7 +127,9 @@ def _reflection_context(reflection: ReflectionOutput) -> dict[str, Any]:
                 "section_title": _truncate_text(task.section_title),
                 "parent_task_id": task.parent_task_id,
                 "priority": task.priority,
-                "success_criteria": [_truncate_text(item) for item in task.success_criteria[:3]],
+                "success_criteria": [
+                    _truncate_text(item) for item in task.success_criteria[:3]
+                ],
             }
             for task in reflection.follow_up_tasks[:6]
         ],
@@ -135,7 +144,10 @@ def _event_text(value: Any, *, limit: int = _MAX_EVENT_TEXT_CHARS) -> str | None
     if value is None:
         return None
     if isinstance(value, list):
-        value = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in value)
+        value = "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in value
+        )
     if not isinstance(value, str):
         value = json.dumps(value, ensure_ascii=False)
     normalized = value.strip()
@@ -150,8 +162,13 @@ def _request_context_for_synthesis(request: ResearchRequest) -> dict[str, Any]:
     return {
         "query": _truncate_text(request.query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
         "audience": _truncate_text(request.audience, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "objective": _truncate_text(request.objective, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "constraints": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in request.constraints[:10]],
+        "objective": _truncate_text(
+            request.objective, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
+        "constraints": [
+            _truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS)
+            for item in request.constraints[:10]
+        ],
         "deliverable_format": request.deliverable_format,
     }
 
@@ -160,13 +177,22 @@ def _task_context_for_synthesis(task: PlanTask) -> dict[str, Any]:
     return {
         "task_id": task.task_id,
         "title": _truncate_text(task.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "description": _truncate_text(task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "search_query": _truncate_text(task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "section_title": _truncate_text(task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "description": _truncate_text(
+            task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
+        "search_query": _truncate_text(
+            task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
+        "section_title": _truncate_text(
+            task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
         "status": task.status.value,
         "priority": task.priority,
         "parent_task_id": task.parent_task_id,
-        "success_criteria": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in task.success_criteria[:6]],
+        "success_criteria": [
+            _truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS)
+            for item in task.success_criteria[:6]
+        ],
     }
 
 
@@ -180,7 +206,9 @@ def _source_context_for_synthesis(source: SourceRecord) -> dict[str, Any]:
         "source_type": source.source_type.value,
         "task_ids": source.task_ids,
         "snippet": _truncate_text(source.snippet, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "published_at": source.published_at.isoformat() if source.published_at else None,
+        "published_at": source.published_at.isoformat()
+        if source.published_at
+        else None,
     }
 
 
@@ -188,18 +216,27 @@ def _evidence_context_for_synthesis(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "evidence_id": item.get("evidence_id"),
         "source_id": item.get("source_id"),
-        "source_title": _truncate_text(item.get("source_title"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "source_title": _truncate_text(
+            item.get("source_title"), limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
         "supports_task_id": item.get("supports_task_id"),
         "claim": _truncate_text(item.get("claim"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "excerpt": _truncate_text(item.get("excerpt"), limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+        "excerpt": _truncate_text(
+            item.get("excerpt"), limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
         "confidence": item.get("confidence"),
     }
 
 
 def _reflection_context_for_synthesis(reflection: ReflectionOutput) -> dict[str, Any]:
     return {
-        "summary": _truncate_text(reflection.summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-        "knowledge_gaps": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in reflection.knowledge_gaps[:10]],
+        "summary": _truncate_text(
+            reflection.summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+        ),
+        "knowledge_gaps": [
+            _truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS)
+            for item in reflection.knowledge_gaps[:10]
+        ],
         "covered_task_ids": reflection.covered_task_ids,
         "needs_more_research": reflection.needs_more_research,
         "needs_human_input": reflection.needs_human_input,
@@ -207,12 +244,21 @@ def _reflection_context_for_synthesis(reflection: ReflectionOutput) -> dict[str,
         "follow_up_tasks": [
             {
                 "title": _truncate_text(task.title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-                "description": _truncate_text(task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-                "search_query": _truncate_text(task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-                "section_title": _truncate_text(task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
+                "description": _truncate_text(
+                    task.description, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+                ),
+                "search_query": _truncate_text(
+                    task.search_query, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+                ),
+                "section_title": _truncate_text(
+                    task.section_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+                ),
                 "parent_task_id": task.parent_task_id,
                 "priority": task.priority,
-                "success_criteria": [_truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS) for item in task.success_criteria[:6]],
+                "success_criteria": [
+                    _truncate_text(item, limit=_SYNTHESIS_TEXT_FIELD_CHARS)
+                    for item in task.success_criteria[:6]
+                ],
             }
             for task in reflection.follow_up_tasks[:8]
         ],
@@ -268,8 +314,12 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
     ) -> ResearchPlan:
         context = {
             "request": _request_context(request),
-            "prior_tasks": [_task_context(task) for task in prior_tasks[:_MAX_TASKS_IN_CONTEXT]],
-            "human_decisions": [_decision_context(decision) for decision in human_decisions[-3:]],
+            "prior_tasks": [
+                _task_context(task) for task in prior_tasks[:_MAX_TASKS_IN_CONTEXT]
+            ],
+            "human_decisions": [
+                _decision_context(decision) for decision in human_decisions[-3:]
+            ],
         }
         return await self._generate_structured(
             ResearchPlan,
@@ -298,9 +348,16 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
             "request": _request_context(request),
             "iteration_count": iteration_count,
             "max_iterations": max_iterations,
-            "plan_tasks": [_task_context(task) for task in plan_tasks[:_MAX_TASKS_IN_CONTEXT]],
-            "sources": [_source_context(source) for source in sources[:_MAX_SOURCES_IN_CONTEXT]],
-            "evidence_summary": [_evidence_context(item) for item in evidence_summary[:_MAX_EVIDENCE_IN_CONTEXT]],
+            "plan_tasks": [
+                _task_context(task) for task in plan_tasks[:_MAX_TASKS_IN_CONTEXT]
+            ],
+            "sources": [
+                _source_context(source) for source in sources[:_MAX_SOURCES_IN_CONTEXT]
+            ],
+            "evidence_summary": [
+                _evidence_context(item)
+                for item in evidence_summary[:_MAX_EVIDENCE_IN_CONTEXT]
+            ],
         }
         return await self._generate_structured(
             ReflectionOutput,
@@ -331,11 +388,25 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
         context = {
             "request": _request_context_for_synthesis(request),
             "plan_title": _truncate_text(plan_title, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-            "plan_summary": _truncate_text(plan_summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS),
-            "plan_tasks": [_task_context_for_synthesis(task) for task in plan_tasks[:_SYNTHESIS_MAX_TASKS_IN_CONTEXT]],
-            "sources": [_source_context_for_synthesis(source) for source in sources[:_SYNTHESIS_MAX_SOURCES_IN_CONTEXT]],
-            "evidence_summary": [_evidence_context_for_synthesis(item) for item in evidence_summary[:_SYNTHESIS_MAX_EVIDENCE_IN_CONTEXT]],
-            "reflections": [_reflection_context_for_synthesis(reflection) for reflection in reflections[-6:]],
+            "plan_summary": _truncate_text(
+                plan_summary, limit=_SYNTHESIS_TEXT_FIELD_CHARS
+            ),
+            "plan_tasks": [
+                _task_context_for_synthesis(task)
+                for task in plan_tasks[:_SYNTHESIS_MAX_TASKS_IN_CONTEXT]
+            ],
+            "sources": [
+                _source_context_for_synthesis(source)
+                for source in sources[:_SYNTHESIS_MAX_SOURCES_IN_CONTEXT]
+            ],
+            "evidence_summary": [
+                _evidence_context_for_synthesis(item)
+                for item in evidence_summary[:_SYNTHESIS_MAX_EVIDENCE_IN_CONTEXT]
+            ],
+            "reflections": [
+                _reflection_context_for_synthesis(reflection)
+                for reflection in reflections[-6:]
+            ],
         }
         return await self._generate_structured(
             SynthesizedReport,
@@ -355,17 +426,28 @@ class JSONSchemaLLMService(ResearchLLMService, ABC):
         )
 
     @abstractmethod
-    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT: ...
+    async def _generate_structured(
+        self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str
+    ) -> SchemaT: ...
 
 
 class OpenAIResearchLLMService(JSONSchemaLLMService):
-    def __init__(self, *, api_key: str, model_name: str, base_url: str, request_timeout_seconds: int):
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model_name: str,
+        base_url: str,
+        request_timeout_seconds: int,
+    ):
         super().__init__(model_name=model_name)
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._request_timeout_seconds = request_timeout_seconds
 
-    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
+    async def _generate_structured(
+        self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str
+    ) -> SchemaT:
         emit_runtime_event(
             "llm_stage_started",
             provider="openai",
@@ -397,7 +479,9 @@ class OpenAIResearchLLMService(JSONSchemaLLMService):
             message = response["choices"][0]["message"]
             raw_content = message["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise ProviderConfigurationError("OpenAI response did not contain structured message content.") from exc
+            raise ProviderConfigurationError(
+                "OpenAI response did not contain structured message content."
+            ) from exc
         reasoning_content = _event_text(message.get("reasoning_content"))
         if reasoning_content:
             emit_runtime_event(
@@ -425,7 +509,9 @@ class OllamaResearchLLMService(JSONSchemaLLMService):
         self._base_url = base_url.rstrip("/")
         self._request_timeout_seconds = request_timeout_seconds
 
-    async def _generate_structured(self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str) -> SchemaT:
+    async def _generate_structured(
+        self, schema: type[SchemaT], *, system_prompt: str, user_prompt: str
+    ) -> SchemaT:
         emit_runtime_event(
             "llm_stage_started",
             provider="ollama",
@@ -449,7 +535,9 @@ class OllamaResearchLLMService(JSONSchemaLLMService):
         try:
             raw_content = response["message"]["content"]
         except (KeyError, TypeError) as exc:
-            raise ProviderConfigurationError("Ollama response did not contain structured message content.") from exc
+            raise ProviderConfigurationError(
+                "Ollama response did not contain structured message content."
+            ) from exc
         output_preview = _event_text(raw_content)
         if output_preview:
             emit_runtime_event(
@@ -469,40 +557,57 @@ async def _http_json_request(
     *,
     timeout_seconds: int = 60,
 ) -> dict[str, Any]:
-    request_headers = {"Content-Type": "application/json", **(headers or {})}
+    request_headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "deep-research-agent/0.1.0",
+        **(headers or {}),
+    }
 
     def _send() -> dict[str, Any]:
         body = json.dumps(payload).encode("utf-8")
-        req = urllib_request.Request(url, data=body, headers=request_headers, method="POST")
+        req = urllib_request.Request(
+            url, data=body, headers=request_headers, method="POST"
+        )
         try:
             with urllib_request.urlopen(req, timeout=timeout_seconds) as response:
                 return json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:  # pragma: no cover - network/provider behavior
             detail = exc.read().decode("utf-8", errors="ignore")
-            raise ProviderConfigurationError(f"Provider request failed with HTTP {exc.code}: {detail}") from exc
+            raise ProviderConfigurationError(
+                f"Provider request failed with HTTP {exc.code}: {detail}"
+            ) from exc
         except error.URLError as exc:  # pragma: no cover - network/provider behavior
-            raise ProviderConfigurationError(f"Provider request failed: {exc.reason}") from exc
+            raise ProviderConfigurationError(
+                f"Provider request failed: {exc.reason}"
+            ) from exc
 
     return await asyncio.to_thread(_send)
 
 
-
 def _parse_schema_response(schema: type[SchemaT], raw_content: Any) -> SchemaT:
     if isinstance(raw_content, list):
-        raw_content = "".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in raw_content)
+        raw_content = "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in raw_content
+        )
     if not isinstance(raw_content, str):
-        raise ProviderConfigurationError("Provider returned non-string structured content.")
+        raise ProviderConfigurationError(
+            "Provider returned non-string structured content."
+        )
     try:
         return schema.model_validate_json(raw_content)
     except ValidationError as exc:
-        raise ProviderConfigurationError(f"Provider returned invalid structured JSON for {schema.__name__}.") from exc
-
+        raise ProviderConfigurationError(
+            f"Provider returned invalid structured JSON for {schema.__name__}."
+        ) from exc
 
 
 def build_llm_service(settings: AppSettings) -> ResearchLLMService:
     if settings.model_provider.value == "openai":
         if not settings.openai_api_key:
-            raise ProviderConfigurationError("OpenAI provider requires DEEP_RESEARCH_OPENAI_API_KEY.")
+            raise ProviderConfigurationError(
+                "OpenAI provider requires DEEP_RESEARCH_OPENAI_API_KEY."
+            )
         return OpenAIResearchLLMService(
             api_key=settings.openai_api_key,
             model_name=settings.model_name,

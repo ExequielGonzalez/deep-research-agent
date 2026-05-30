@@ -16,5 +16,7 @@ COPY src ./src
 RUN pip install --upgrade pip \
     && pip install ".[postgres]"
 
+RUN mkdir -p /app/.local
+
 ENTRYPOINT ["deep-research-agent"]
 CMD ["--help"]

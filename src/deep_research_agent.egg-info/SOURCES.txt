@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 research-context.md
 src/deep_research_agent/__init__.py

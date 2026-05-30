@@ -429,6 +429,101 @@ INDEX_HTML = """<!DOCTYPE html>
       .report-header { flex-direction: column; }
       .count-grid { grid-template-columns: 1fr; }
     }
+
+    /* Tab navigation */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      padding: 10px 12px 0;
+      border-bottom: 1px solid var(--line);
+      margin: 0 12px;
+    }
+    .tab-btn {
+      flex: 1;
+      min-height: 38px;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 12px 12px 0 0;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      padding: 8px 12px;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+    .tab-btn:hover { background: rgba(19,111,99,0.06); }
+    .tab-btn.active {
+      background: var(--surface);
+      color: var(--accent);
+      border-color: var(--line);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Settings panel */
+    .settings-section {
+      border-top: 1px solid var(--line);
+      padding: 18px;
+    }
+    .settings-section h3 {
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+      color: var(--ink);
+    }
+    .provider-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 14px;
+      background: rgba(255,255,255,0.68);
+    }
+    .provider-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .provider-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: white;
+    }
+    .provider-icon.openai { background: linear-gradient(135deg, #10a37f, #1b8d77); }
+    .provider-icon.ollama { background: linear-gradient(135deg, #6366f1, #8b5cf6); }
+    .provider-card label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .provider-card input, .provider-card select {
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    .save-indicator {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-left: 8px;
+      opacity: 0;
+      transition: opacity 200ms ease;
+    }
+    .save-indicator.show { opacity: 1; }
+
+    /* Search provider config */
+    .search-provider-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .search-provider-row .field-stack { flex: 1; }
   </style>
 </head>
 <body>
@@ -440,13 +535,96 @@ INDEX_HTML = """<!DOCTYPE html>
         <h1>Deep Research Console</h1>
         <p class="subtle">Una interfaz local para lanzar investigaciones, seguir el flujo real del grafo y resolver checkpoints HITL sin salir del navegador.</p>
       </div>
-      <div class="section-header">
-        <div class="meta-row">
-          <h2 style="font-size:1rem">Corridas recientes</h2>
-          <button id="refresh-runs" class="button button-secondary" type="button">Actualizar</button>
+      <nav class="tab-bar">
+        <button class="tab-btn active" data-tab="runs">Corridas</button>
+        <button class="tab-btn" data-tab="settings">Configuración</button>
+      </nav>
+
+      <div id="tab-runs" class="tab-content active">
+        <div class="section-header">
+          <div class="meta-row">
+            <h2 style="font-size:1rem">Corridas recientes</h2>
+            <button id="refresh-runs" class="button button-secondary" type="button">Actualizar</button>
+          </div>
+        </div>
+        <div id="run-list" class="run-list"></div>
+      </div>
+
+      <div id="tab-settings" class="tab-content">
+        <div class="settings-section">
+          <h3>Provider de Modelo (LLM)</h3>
+
+          <div class="provider-card">
+            <div class="provider-card-header">
+              <div class="provider-icon openai">O</div>
+              <strong>OpenAI / OpenAI-Compatible</strong>
+            </div>
+            <label for="settings-openai-api-key">API Key</label>
+            <input id="settings-openai-api-key" type="password" placeholder="sk-...">
+            <label for="settings-openai-base-url">Base URL</label>
+            <input id="settings-openai-base-url" type="url" placeholder="https://api.openai.com/v1">
+          </div>
+
+          <div class="provider-card">
+            <div class="provider-card-header">
+              <div class="provider-icon ollama">O</div>
+              <strong>Ollama (Local)</strong>
+            </div>
+            <label for="settings-ollama-base-url">Base URL</label>
+            <input id="settings-ollama-base-url" type="url" placeholder="http://host.docker.internal:11434">
+          </div>
+
+          <div class="settings-section" style="border-top: none; padding: 0;">
+            <h3>Search Provider</h3>
+            <div class="provider-card">
+              <label for="settings-search-provider">Provider</label>
+              <select id="settings-search-provider">
+                <option value="none">DuckDuckGo (Gratis, por defecto)</option>
+                <option value="tavily">Tavily</option>
+                <option value="serper">Serper (Google)</option>
+              </select>
+              <div class="search-provider-row" id="search-api-key-row" style="display:none">
+                <div class="field-stack">
+                  <label for="settings-search-api-key">API Key</label>
+                  <input id="settings-search-api-key" type="password" placeholder="Tu API key">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section" style="border-top: 1px solid var(--line); padding: 0;">
+            <h3>Parámetros de Ejecución</h3>
+            <div class="provider-card">
+              <div class="field-grid">
+                <div class="field-stack">
+                  <label for="settings-max-iterations">Max Iteraciones</label>
+                  <input id="settings-max-iterations" type="number" min="1" max="20" value="6">
+                </div>
+                <div class="field-stack">
+                  <label for="settings-max-sources">Max Fuentes por Tarea</label>
+                  <input id="settings-max-sources" type="number" min="1" max="20" value="8">
+                </div>
+              </div>
+              <div class="field-grid">
+                <div class="field-stack">
+                  <label for="settings-token-budget">Token Budget Total</label>
+                  <input id="settings-token-budget" type="number" min="1000" step="1000" value="120000">
+                </div>
+                <div class="field-stack">
+                  <label for="settings-max-notes">Max Notas</label>
+                  <input id="settings-max-notes" type="number" min="10" step="10" value="200">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="button-row" style="padding: 18px; border-top: 1px solid var(--line); margin: 0;">
+            <button id="save-settings" class="button button-primary" type="button">Guardar Configuración</button>
+            <button id="load-settings" class="button button-secondary" type="button">Cargar desde Servidor</button>
+            <span id="save-indicator" class="save-indicator">¡Guardado!</span>
+          </div>
         </div>
       </div>
-      <div id="run-list" class="run-list"></div>
     </aside>
 
     <main class="workspace">
@@ -466,22 +644,12 @@ INDEX_HTML = """<!DOCTYPE html>
           <textarea id="query" name="query" placeholder="Ejemplo: Evalua llama.cpp como backend local compatible con OpenAI, incluyendo compatibilidad HTTP, rendimiento, limitaciones y workflow de despliegue." required></textarea>
           <div class="field-grid">
             <div class="field-stack">
-              <label for="base-url">OpenAI-compatible base URL</label>
-              <input id="base-url" name="base_url" value="http://127.0.0.1:8085/v1">
-            </div>
-            <div class="field-stack">
               <label for="model-name">Modelo</label>
-              <select id="model-name" name="model_name"></select>
+              <select id="model-name" name="model_name"><option value="">Configurá tu modelo en la pestaña 'Configuración'</option></select>
             </div>
-          </div>
-          <div class="field-grid">
             <div class="field-stack">
               <label for="timeout-seconds">LLM timeout (segundos)</label>
-              <input id="timeout-seconds" name="llm_request_timeout_seconds" type="number" min="30" step="30" value="600">
-            </div>
-            <div class="field-stack">
-              <label for="timeout-hint">Modo de avance</label>
-              <input id="timeout-hint" value="Live updates por SSE + snapshots persistidos" disabled>
+              <input id="timeout-seconds" type="number" min="30" step="30" value="600">
             </div>
           </div>
           <div class="button-row">
@@ -562,12 +730,12 @@ INDEX_HTML = """<!DOCTYPE html>
       eventSource: null,
       runs: [],
       liveEventsByThread: {},
+      savedSettings: {},
     };
 
     const elements = {
       runForm: document.getElementById('run-form'),
       query: document.getElementById('query'),
-      baseUrl: document.getElementById('base-url'),
       modelName: document.getElementById('model-name'),
       timeoutSeconds: document.getElementById('timeout-seconds'),
       refreshModels: document.getElementById('refresh-models'),
@@ -594,6 +762,9 @@ INDEX_HTML = """<!DOCTYPE html>
       reportPath: document.getElementById('report-path'),
       reportStatus: document.getElementById('report-status'),
     };
+
+    // Cached settings read from server
+    let currentSettings = {};
 
     function escapeHtml(value) {
       return String(value ?? '')
@@ -1051,14 +1222,17 @@ INDEX_HTML = """<!DOCTYPE html>
     }
 
     async function loadModels() {
-      const baseUrl = elements.baseUrl.value.trim();
-      const payload = await fetchJson(`/api/models?base_url=${encodeURIComponent(baseUrl)}`);
-      const models = payload.models || [];
-      if (!models.length) {
-        elements.modelName.innerHTML = '<option value="">Sin modelos detectados</option>';
-        return;
+      try {
+        const payload = await fetchJson('/api/models');
+        const models = payload.models || [];
+        if (!models.length) {
+          elements.modelName.innerHTML = '<option value="">Sin modelos detectados. Verificá la configuración en la pestaña Configuración.</option>';
+          return;
+        }
+        elements.modelName.innerHTML = models.map((modelId) => `<option value="${escapeHtml(modelId)}">${escapeHtml(modelId)}</option>`).join('');
+      } catch (err) {
+        elements.modelName.innerHTML = `<option value="">Error: ${escapeHtml(err.message)}</option>`;
       }
-      elements.modelName.innerHTML = models.map((modelId) => `<option value="${escapeHtml(modelId)}">${escapeHtml(modelId)}</option>`).join('');
     }
 
     async function submitRun(event) {
@@ -1066,7 +1240,6 @@ INDEX_HTML = """<!DOCTYPE html>
       const payload = {
         query: elements.query.value.trim(),
         model_name: elements.modelName.value,
-        openai_base_url: elements.baseUrl.value.trim(),
         llm_request_timeout_seconds: Number(elements.timeoutSeconds.value || 600),
       };
       const created = await fetchJson('/api/runs', {
@@ -1104,7 +1277,74 @@ INDEX_HTML = """<!DOCTYPE html>
       button.addEventListener('click', () => submitDecision(button.dataset.decision));
     });
 
-    loadModels().catch(console.error);
+    // === Tab switching ===
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // === Search provider toggle ===
+    const searchProviderSelect = document.getElementById('settings-search-provider');
+    const searchApiKeyRow = document.getElementById('search-api-key-row');
+    searchProviderSelect.addEventListener('change', () => {
+      searchApiKeyRow.style.display = searchProviderSelect.value === 'none' ? 'none' : 'flex';
+    });
+
+    // === Settings: save ===
+    async function saveSettings() {
+      const payload = {
+        openai_api_key: document.getElementById('settings-openai-api-key').value.trim(),
+        openai_base_url: document.getElementById('settings-openai-base-url').value.trim(),
+        ollama_base_url: document.getElementById('settings-ollama-base-url').value.trim(),
+        default_search_provider: document.getElementById('settings-search-provider').value,
+        tavily_api_key: searchProviderSelect.value === 'tavily' ? document.getElementById('settings-search-api-key').value.trim() : '',
+        serper_api_key: searchProviderSelect.value === 'serper' ? document.getElementById('settings-search-api-key').value.trim() : '',
+        max_iterations: Number(document.getElementById('settings-max-iterations').value || 6),
+        max_sources_per_task: Number(document.getElementById('settings-max-sources').value || 8),
+        total_token_budget: Number(document.getElementById('settings-token-budget').value || 120000),
+        max_notes: Number(document.getElementById('settings-max-notes').value || 200),
+      };
+      try {
+        await fetchJson('/api/settings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        const indicator = document.getElementById('save-indicator');
+        indicator.classList.add('show');
+        setTimeout(() => indicator.classList.remove('show'), 2000);
+      } catch (err) {
+        alert('Error al guardar: ' + err.message);
+      }
+    }
+
+    // === Settings: load from server ===
+    async function loadSettings() {
+      try {
+        const config = await fetchJson('/api/settings');
+        if (config.openai_api_key !== undefined) document.getElementById('settings-openai-api-key').value = config.openai_api_key || '';
+        if (config.openai_base_url !== undefined) document.getElementById('settings-openai-base-url').value = config.openai_base_url || '';
+        if (config.ollama_base_url !== undefined) document.getElementById('settings-ollama-base-url').value = config.ollama_base_url || '';
+        if (config.default_search_provider !== undefined) {
+          document.getElementById('settings-search-provider').value = config.default_search_provider;
+          searchProviderSelect.dispatchEvent(new Event('change'));
+        }
+        if (config.max_iterations !== undefined) document.getElementById('settings-max-iterations').value = config.max_iterations;
+        if (config.max_sources_per_task !== undefined) document.getElementById('settings-max-sources').value = config.max_sources_per_task;
+        if (config.total_token_budget !== undefined) document.getElementById('settings-token-budget').value = config.total_token_budget;
+        if (config.max_notes !== undefined) document.getElementById('settings-max-notes').value = config.max_notes;
+      } catch (err) {
+        alert('Error al cargar configuracion: ' + err.message);
+      }
+    }
+
+    document.getElementById('save-settings').addEventListener('click', saveSettings);
+    document.getElementById('load-settings').addEventListener('click', loadSettings);
+
+    // === Load config on startup ===
     loadRuns().catch(console.error);
   </script>
 </body>
