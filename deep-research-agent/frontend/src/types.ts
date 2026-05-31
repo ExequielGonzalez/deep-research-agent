@@ -17,8 +17,13 @@ export interface AgentSettings {
   openai_base_url: string
   ollama_base_url: string
   default_search_provider: string
-  tavily_api_key?: string
-  serper_api_key?: string
+  searxng_pool_size: number
+  searxng_selected_instances: string[]
+  searxng_selected_at: string | null
+  tavily_api_key: string
+  serper_api_key: string
+  has_tavily_api_key: boolean
+  has_serper_api_key: boolean
   max_iterations: number
   max_sources_per_task: number
   total_token_budget: number
@@ -38,6 +43,7 @@ export interface RuntimeConfig {
   model_name?: string
   openai_base_url?: string
   llm_request_timeout_seconds?: number
+  default_search_provider?: string
   [key: string]: unknown
 }
 
@@ -150,10 +156,17 @@ export interface SaveSettingsRequest {
   default_search_provider?: string
   tavily_api_key?: string
   serper_api_key?: string
+  clear_tavily_api_key?: boolean
+  clear_serper_api_key?: boolean
   max_iterations?: number
   max_sources_per_task?: number
   total_token_budget?: number
   max_notes?: number
+}
+
+export interface RefreshSearxngPoolResponse {
+  instances: string[]
+  selected_at: string
 }
 
 // ─── SSE Event Types ─────────────────────────────────────────────────────
@@ -253,6 +266,7 @@ export interface ResearchGraphState {
   sources?: SourceRecord[]
   notes?: string[]
   report_sections?: ReportSection[]
+  last_error?: string
   final_report_title?: string
   final_report_markdown?: string
   final_report_path?: string

@@ -1,53 +1,141 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import type { AgentSettings, SaveSettingsRequest } from '@/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 const settingsStore = useSettingsStore()
 
-// Form state
-const form = ref({
-  openai_api_key: '',
-  openai_base_url: '',
-  ollama_base_url: '',
-  default_search_provider: 'none',
-  tavily_api_key: '',
-  serper_api_key: '',
-  max_iterations: 6,
-  max_sources_per_task: 8,
-  total_token_budget: 120000,
-  max_notes: 200,
+interface SettingsFormState {
+  openai_api_key: string
+  openai_base_url: string
+  ollama_base_url: string
+  default_search_provider: string
+  tavily_api_key: string
+  serper_api_key: string
+  clear_tavily_api_key: boolean
+  clear_serper_api_key: boolean
+  max_iterations: number
+  max_sources_per_task: number
+  total_token_budget: number
+  max_notes: number
+}
+
+function buildFormState(settings?: AgentSettings | null): SettingsFormState {
+  return {
+    openai_api_key: settings?.openai_api_key ?? '',
+    openai_base_url: settings?.openai_base_url ?? '',
+    ollama_base_url: settings?.ollama_base_url ?? '',
+    default_search_provider: settings?.default_search_provider ?? 'none',
+    tavily_api_key: '',
+    serper_api_key: '',
+    clear_tavily_api_key: false,
+    clear_serper_api_key: false,
+    max_iterations: settings?.max_iterations ?? 6,
+    max_sources_per_task: settings?.max_sources_per_task ?? 8,
+    total_token_budget: settings?.total_token_budget ?? 120000,
+    max_notes: settings?.max_notes ?? 200,
+  }
+}
+
+const form = ref<SettingsFormState>(buildFormState())
+
+const hasStoredTavilyKey = computed(() => settingsStore.settings?.has_tavily_api_key ?? false)
+const hasStoredSerperKey = computed(() => settingsStore.settings?.has_serper_api_key ?? false)
+const searxngSelectedInstances = computed(() => settingsStore.settings?.searxng_selected_instances ?? [])
+const searxngSelectedAt = computed(() => settingsStore.settings?.searxng_selected_at ?? null)
+const searxngPoolSize = computed(() => settingsStore.settings?.searxng_pool_size ?? 5)
+
+const isModified = computed(() => {
+  const settings = settingsStore.settings
+  if (!settings) return false
+  return (
+    form.value.openai_api_key !== settings.openai_api_key ||
+    form.value.openai_base_url !== settings.openai_base_url ||
+    form.value.ollama_base_url !== settings.ollama_base_url ||
+    form.value.default_search_provider !== settings.default_search_provider ||
+    form.value.tavily_api_key.trim().length > 0 ||
+    form.value.serper_api_key.trim().length > 0 ||
+    form.value.clear_tavily_api_key ||
+    form.value.clear_serper_api_key ||
+    form.value.max_iterations !== settings.max_iterations ||
+    form.value.max_sources_per_task !== settings.max_sources_per_task ||
+    form.value.total_token_budget !== settings.total_token_budget ||
+    form.value.max_notes !== settings.max_notes
+  )
 })
+
+function syncFormFromSettings() {
+  form.value = buildFormState(settingsStore.settings)
+}
 
 onMounted(async () => {
   await settingsStore.fetchSettings()
-  if (settingsStore.settings) {
-    Object.assign(form.value, settingsStore.settings)
-  }
+  syncFormFromSettings()
 })
 
 async function saveSettings() {
-  await settingsStore.saveSettings(form.value)
+  const payload: SaveSettingsRequest = {
+    openai_api_key: form.value.openai_api_key,
+    openai_base_url: form.value.openai_base_url,
+    ollama_base_url: form.value.ollama_base_url,
+    default_search_provider: form.value.default_search_provider,
+    tavily_api_key: form.value.tavily_api_key,
+    serper_api_key: form.value.serper_api_key,
+    clear_tavily_api_key: form.value.clear_tavily_api_key,
+    clear_serper_api_key: form.value.clear_serper_api_key,
+    max_iterations: form.value.max_iterations,
+    max_sources_per_task: form.value.max_sources_per_task,
+    total_token_budget: form.value.total_token_budget,
+    max_notes: form.value.max_notes,
+  }
+  await settingsStore.saveSettings(payload)
+  syncFormFromSettings()
 }
 
 async function loadSettings() {
   await settingsStore.fetchSettings()
-  if (settingsStore.settings) {
-    Object.assign(form.value, settingsStore.settings)
-  }
+  syncFormFromSettings()
 }
 
-function isModified(): boolean {
-  if (!settingsStore.settings) return false
-  return (
-    form.value.openai_api_key !== settingsStore.settings.openai_api_key ||
-    form.value.openai_base_url !== settingsStore.settings.openai_base_url ||
-    form.value.ollama_base_url !== settingsStore.settings.ollama_base_url ||
-    form.value.default_search_provider !== settingsStore.settings.default_search_provider ||
-    form.value.max_iterations !== settingsStore.settings.max_iterations ||
-    form.value.max_sources_per_task !== settingsStore.settings.max_sources_per_task ||
-    form.value.total_token_budget !== settingsStore.settings.total_token_budget ||
-    form.value.max_notes !== settingsStore.settings.max_notes
-  )
+async function refreshSearxngPool() {
+  await settingsStore.refreshSearxngPool()
+  syncFormFromSettings()
+}
+
+function markKeyForRemoval(provider: 'tavily' | 'serper') {
+  if (provider === 'tavily') {
+    form.value.clear_tavily_api_key = true
+    form.value.tavily_api_key = ''
+    return
+  }
+  form.value.clear_serper_api_key = true
+  form.value.serper_api_key = ''
+}
+
+function undoKeyRemoval(provider: 'tavily' | 'serper') {
+  if (provider === 'tavily') {
+    form.value.clear_tavily_api_key = false
+    return
+  }
+  form.value.clear_serper_api_key = false
+}
+
+function searchKeyPlaceholder(provider: 'tavily' | 'serper'): string {
+  const hasStoredKey = provider === 'tavily' ? hasStoredTavilyKey.value : hasStoredSerperKey.value
+  if (hasStoredKey) {
+    return 'Leave blank to keep the current key, or paste a new one to replace it'
+  }
+  return provider === 'tavily'
+    ? 'Enter your Tavily API key'
+    : 'Enter your Serper API key'
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) {
+    return 'Not selected yet'
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.valueOf()) ? value : parsed.toLocaleString()
 }
 </script>
 
@@ -70,7 +158,7 @@ function isModified(): boolean {
         </button>
         <button
           class="btn btn-primary"
-          :disabled="settingsStore.isSaving || !isModified()"
+          :disabled="settingsStore.isSaving || !isModified"
           @click="saveSettings"
         >
           <span v-if="settingsStore.isSaving">Saving...</span>
@@ -155,27 +243,96 @@ function isModified(): boolean {
             <label for="search-provider">Provider</label>
             <select id="search-provider" v-model="form.default_search_provider">
               <option value="none">DuckDuckGo (Free, default)</option>
+              <option value="searxng">SearXNG Public Pool</option>
               <option value="tavily">Tavily</option>
               <option value="serper">Serper (Google)</option>
             </select>
           </div>
+          <div class="search-key-status-grid">
+            <div class="search-key-status">
+              <span class="search-key-label">Tavily credential</span>
+              <span :class="['search-key-pill', hasStoredTavilyKey ? 'is-configured' : 'is-missing']">
+                {{ hasStoredTavilyKey ? 'Saved on server' : 'Not configured' }}
+              </span>
+            </div>
+            <div class="search-key-status">
+              <span class="search-key-label">Serper credential</span>
+              <span :class="['search-key-pill', hasStoredSerperKey ? 'is-configured' : 'is-missing']">
+                {{ hasStoredSerperKey ? 'Saved on server' : 'Not configured' }}
+              </span>
+            </div>
+          </div>
           <div v-if="form.default_search_provider === 'tavily'" class="field">
             <label for="tavily-key">Tavily API Key</label>
+            <div v-if="hasStoredTavilyKey && !form.clear_tavily_api_key" class="credential-note">
+              <span>A Tavily key is already stored on the server.</span>
+              <button class="link-button" type="button" @click="markKeyForRemoval('tavily')">
+                Remove saved key
+              </button>
+            </div>
+            <div v-else-if="form.clear_tavily_api_key" class="credential-note is-warning">
+              <span>The saved Tavily key will be removed when you save.</span>
+              <button class="link-button" type="button" @click="undoKeyRemoval('tavily')">
+                Undo
+              </button>
+            </div>
             <input
               id="tavily-key"
               v-model="form.tavily_api_key"
               type="password"
-              placeholder="Enter your Tavily API key"
+              :placeholder="searchKeyPlaceholder('tavily')"
             />
           </div>
           <div v-else-if="form.default_search_provider === 'serper'" class="field">
             <label for="serper-key">Serper API Key</label>
+            <div v-if="hasStoredSerperKey && !form.clear_serper_api_key" class="credential-note">
+              <span>A Serper key is already stored on the server.</span>
+              <button class="link-button" type="button" @click="markKeyForRemoval('serper')">
+                Remove saved key
+              </button>
+            </div>
+            <div v-else-if="form.clear_serper_api_key" class="credential-note is-warning">
+              <span>The saved Serper key will be removed when you save.</span>
+              <button class="link-button" type="button" @click="undoKeyRemoval('serper')">
+                Undo
+              </button>
+            </div>
             <input
               id="serper-key"
               v-model="form.serper_api_key"
               type="password"
-              placeholder="Enter your Serper API key"
+              :placeholder="searchKeyPlaceholder('serper')"
             />
+          </div>
+          <div v-else-if="form.default_search_provider === 'searxng'" class="field">
+            <div class="field-inline">
+              <div>
+                <label>SearXNG Instance Pool</label>
+                <p class="field-hint">
+                  Select {{ searxngPoolSize }} public instances once, then reuse them with per-search random routing and fallback.
+                </p>
+              </div>
+              <button
+                class="btn btn-secondary btn-inline"
+                type="button"
+                :disabled="settingsStore.isRefreshingSearxng"
+                @click="refreshSearxngPool"
+              >
+                <span v-if="settingsStore.isRefreshingSearxng">Refreshing...</span>
+                <span v-else>Refresh Pool</span>
+              </button>
+            </div>
+            <p class="pool-meta">
+              Last selection: {{ formatTimestamp(searxngSelectedAt) }}
+            </p>
+            <ul v-if="searxngSelectedInstances.length > 0" class="instance-list">
+              <li v-for="instance in searxngSelectedInstances" :key="instance">
+                <a :href="instance" target="_blank" rel="noreferrer">{{ instance }}</a>
+              </li>
+            </ul>
+            <p v-else class="field-hint">
+              No pool has been selected yet. Refresh now or let the first search choose one automatically.
+            </p>
           </div>
         </div>
       </section>
@@ -244,6 +401,41 @@ function isModified(): boolean {
   flex-direction: column;
   gap: var(--space-6);
   max-width: 800px;
+
+.field-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.field-hint,
+.pool-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.btn-inline {
+  align-self: flex-start;
+}
+
+.instance-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.instance-list a {
+  color: var(--accent);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.instance-list a:hover {
+  text-decoration: underline;
+}
   animation: fadeIn var(--transition-slow) forwards;
 }
 
@@ -437,12 +629,97 @@ function isModified(): boolean {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+.search-key-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.search-key-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+}
+
+.search-key-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.search-key-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.search-key-pill.is-configured {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.search-key-pill.is-missing {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.credential-note {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.credential-note.is-warning {
+  background: var(--warning-soft, rgba(217, 119, 6, 0.12));
+  border-color: var(--warning-medium, rgba(217, 119, 6, 0.28));
+  color: var(--warning, #b45309);
+}
+
+.link-button {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 600px) {
   .settings-header {
     flex-direction: column;
   }
   .fields-grid {
     grid-template-columns: 1fr;
+  }
+  .search-key-status-grid {
+    grid-template-columns: 1fr;
+  }
+  .credential-note,
+  .search-key-status {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

@@ -20,3 +20,23 @@ def test_settings_load_from_environment(monkeypatch):
     assert settings.default_search_provider is SearchProvider.FIRECRAWL
     assert settings.total_token_budget == 64_000
     assert settings.max_iterations == 9
+
+
+def test_settings_parse_searxng_pool_from_environment(monkeypatch):
+    monkeypatch.setenv("DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER", "searxng")
+    monkeypatch.setenv("DEEP_RESEARCH_SEARXNG_LOCAL_URL", "http://searxng:8080/")
+    monkeypatch.setenv("DEEP_RESEARCH_SEARXNG_POOL_SIZE", "5")
+    monkeypatch.setenv(
+        "DEEP_RESEARCH_SEARXNG_SELECTED_INSTANCES",
+        '["https://search-1.example/", "https://search-2.example"]',
+    )
+
+    settings = AppSettings()
+
+    assert settings.default_search_provider is SearchProvider.SEARXNG
+    assert settings.searxng_local_url == "http://searxng:8080"
+    assert settings.searxng_pool_size == 5
+    assert settings.searxng_selected_instances == [
+        "https://search-1.example/",
+        "https://search-2.example/",
+    ]

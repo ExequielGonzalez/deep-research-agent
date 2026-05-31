@@ -275,11 +275,15 @@ export const useResearchStore = defineStore('research', () => {
           status: (state.status as RunStatus) ?? 'created',
           created_at: (state.created_at as string) ?? '',
           updated_at: new Date().toISOString(),
+          last_message: typeof snapData.message === 'string' ? snapData.message : undefined,
           is_running: (state.status as string) === 'running',
           runtime_config: runtimeConfig,
           state: state,
           pending_human_input: pendingInput,
         } as ResearchRun
+        if (run.status === 'failed' && typeof state.last_error === 'string') {
+          runError.value = state.last_error
+        }
         latestRun.value = run
         upsertRun(run)
         break
@@ -288,9 +292,16 @@ export const useResearchStore = defineStore('research', () => {
       case 'llm_stage_started':
       case 'llm_reasoning':
       case 'llm_output_preview':
-      case 'run_task_failed':
       case 'stream_end': {
         addEvent(event.thread_id, event)
+        break
+      }
+
+      case 'run_task_failed': {
+        addEvent(event.thread_id, event)
+        if (event.thread_id === activeThreadId.value && typeof event.data.error === 'string') {
+          runError.value = event.data.error
+        }
         break
       }
     }

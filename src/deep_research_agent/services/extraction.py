@@ -5,9 +5,11 @@ import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Iterable
+from urllib import error
 from urllib import request as urllib_request
 
 from deep_research_agent.domain.models import EvidenceRecord, PlanTask, ResearchRequest, SourceRecord
+from deep_research_agent.services.llm import ProviderConfigurationError
 from deep_research_agent.services.search import stable_hash
 from deep_research_agent.settings import AppSettings
 
@@ -72,20 +74,60 @@ class ContentExtractor:
                 content_type = response.headers.get("Content-Type", "")
                 raw = response.read().decode("utf-8", errors="ignore")
             if "html" in content_type:
-                parser = _TextExtractor()
-                parser.feed(raw)
-                return parser.text()
+                return _extract_html_text(raw)
             return raw
 
         try:
             return await asyncio.wait_for(asyncio.to_thread(_fetch), timeout=35)
-        except (TimeoutError, asyncio.TimeoutError, Exception):  # pragma: no cover - network availability
-            return ""
+        except (asyncio.TimeoutError, TimeoutError) as exc:  # pragma: no cover - network availability
+            raise ProviderConfigurationError(
+                f"Content extraction timed out after 35s: {url}"
+            ) from exc
+        except error.HTTPError as exc:  # pragma: no cover - network availability
+            detail = exc.read().decode("utf-8", errors="ignore")
+            raise ProviderConfigurationError(
+                f"Content extraction failed with HTTP {exc.code}: {detail or 'no response body'}"
+            ) from exc
+        except error.URLError as exc:  # pragma: no cover - network availability
+            raise ProviderConfigurationError(
+                f"Content extraction failed: {exc.reason}"
+            ) from exc
+        except Exception as exc:  # pragma: no cover - network availability
+            raise ProviderConfigurationError(
+                f"Content extraction failed unexpectedly: {exc}"
+            ) from exc
 
 
 
 def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _extract_html_text(raw_html: str) -> str:
+    try:
+        extracted = _extract_with_trafilatura(raw_html)
+    except Exception:
+        extracted = ""
+    if extracted:
+        return extracted
+    parser = _TextExtractor()
+    parser.feed(raw_html)
+    return parser.text()
+
+
+def _extract_with_trafilatura(raw_html: str) -> str:
+    try:
+        import trafilatura
+    except ImportError:
+        return ""
+    extracted = trafilatura.extract(
+        raw_html,
+        include_comments=False,
+        include_tables=False,
+        favor_precision=True,
+        deduplicate=True,
+    )
+    return extracted.strip() if extracted else ""
 
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from deep_research_agent.cli import main
+from deep_research_agent.domain.models import SearchProvider
 from tests.support import build_fake_bundle
 
 
@@ -53,5 +54,90 @@ def test_cli_run_resume_and_list_pending(monkeypatch, capsys):
         assert main(["list-pending"]) == 0
         pending_after = json.loads(capsys.readouterr().out)
         assert pending_after == {"count": 0, "runs": []}
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_cli_run_uses_persisted_search_settings(monkeypatch, capsys):
+    workspace = (Path("tests/.artifacts") / uuid4().hex).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    configure_env(monkeypatch, workspace)
+    monkeypatch.chdir(workspace)
+
+    settings_dir = Path(".local")
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "default_search_provider": "tavily",
+                "tavily_api_key": "tvly-test-key",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured_settings = []
+
+    def build_bundle(settings):
+        captured_settings.append(settings)
+        return build_fake_bundle()
+
+    monkeypatch.setattr("deep_research_agent.runtime.service.build_service_bundle", build_bundle)
+
+    try:
+        assert main(["run", "--query", "Assess LangGraph checkpointing"]) == 0
+        assert captured_settings
+        assert captured_settings[-1].default_search_provider is SearchProvider.TAVILY
+        assert captured_settings[-1].tavily_api_key == "tvly-test-key"
+        assert json.loads(capsys.readouterr().out)["status"] == "interrupted"
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_cli_run_uses_persisted_searxng_settings(monkeypatch, capsys):
+    workspace = (Path("tests/.artifacts") / uuid4().hex).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    configure_env(monkeypatch, workspace)
+    monkeypatch.chdir(workspace)
+
+    settings_dir = Path(".local")
+    settings_dir.mkdir(parents=True, exist_ok=True)
+    (settings_dir / "settings.json").write_text(
+        json.dumps(
+            {
+                "default_search_provider": "searxng",
+                "searxng_selected_instances": [
+                    "https://search-1.example/",
+                    "https://search-2.example/",
+                    "https://search-3.example/",
+                    "https://search-4.example/",
+                    "https://search-5.example/",
+                ],
+                "searxng_selected_at": "2026-05-31T12:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured_settings = []
+
+    def build_bundle(settings):
+        captured_settings.append(settings)
+        return build_fake_bundle()
+
+    monkeypatch.setattr("deep_research_agent.runtime.service.build_service_bundle", build_bundle)
+
+    try:
+        assert main(["run", "--query", "Assess LangGraph checkpointing"]) == 0
+        assert captured_settings
+        assert captured_settings[-1].default_search_provider is SearchProvider.SEARXNG
+        assert captured_settings[-1].searxng_selected_instances == [
+            "https://search-1.example/",
+            "https://search-2.example/",
+            "https://search-3.example/",
+            "https://search-4.example/",
+            "https://search-5.example/",
+        ]
+        assert json.loads(capsys.readouterr().out)["status"] == "interrupted"
     finally:
         shutil.rmtree(workspace, ignore_errors=True)

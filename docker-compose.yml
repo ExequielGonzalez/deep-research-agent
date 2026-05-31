@@ -16,6 +16,16 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  searxng:
+    image: ghcr.io/searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      BASE_URL: ${DEEP_RESEARCH_SEARXNG_LOCAL_URL:-http://searxng:8080}
+      INSTANCE_NAME: ${DEEP_RESEARCH_SEARXNG_INSTANCE_NAME:-Deep Research Search}
+    volumes:
+      - searxng-config:/etc/searxng
+      - searxng-cache:/var/cache/searxng
+
   app:
     build:
       context: .
@@ -23,6 +33,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      searxng:
+        condition: service_started
     ports:
       - "8000:8000"
     environment:
@@ -35,6 +47,9 @@ services:
       DEEP_RESEARCH_POSTGRES_DB_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-deep_research}
       DEEP_RESEARCH_SQLITE_DB_URL: ${DEEP_RESEARCH_SQLITE_DB_URL:-sqlite+aiosqlite:///./.local/deep_research.sqlite3}
       DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER: ${DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER:-none}
+      DEEP_RESEARCH_SEARXNG_REGISTRY_URL: ${DEEP_RESEARCH_SEARXNG_REGISTRY_URL:-https://searx.space/data/instances.json}
+      DEEP_RESEARCH_SEARXNG_LOCAL_URL: ${DEEP_RESEARCH_SEARXNG_LOCAL_URL:-http://searxng:8080}
+      DEEP_RESEARCH_SEARXNG_POOL_SIZE: ${DEEP_RESEARCH_SEARXNG_POOL_SIZE:-5}
       DEEP_RESEARCH_TAVILY_API_KEY: ${DEEP_RESEARCH_TAVILY_API_KEY:-}
       DEEP_RESEARCH_SERPER_API_KEY: ${DEEP_RESEARCH_SERPER_API_KEY:-}
       DEEP_RESEARCH_TOTAL_TOKEN_BUDGET: ${DEEP_RESEARCH_TOTAL_TOKEN_BUDGET:-120000}
@@ -52,3 +67,5 @@ services:
 volumes:
   agent-local-data:
   postgres-data:
+  searxng-cache:
+  searxng-config:

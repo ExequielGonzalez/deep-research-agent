@@ -6,6 +6,7 @@ import type {
   AppConfig,
   AgentSettings,
   ResearchRun,
+  RefreshSearxngPoolResponse,
   RunListItem,
   CreateRunRequest,
   SubmitDecisionRequest,
@@ -77,6 +78,12 @@ export const api = {
     return request('/api/settings', {
       method: 'POST',
       body: JSON.stringify(data),
+    })
+  },
+
+  refreshSearxngPool(): Promise<RefreshSearxngPoolResponse> {
+    return request('/api/settings/searxng/refresh', {
+      method: 'POST',
     })
   },
 

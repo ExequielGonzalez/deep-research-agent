@@ -29,6 +29,21 @@ const events = computed(() => researchStore.activeEvents)
 const isConnecting = computed(() => researchStore.isConnecting)
 const isConnected = computed(() => researchStore.isConnected)
 const runError = computed(() => researchStore.runError)
+const activeState = computed(() => (activeRun.value?.state ?? {}) as Record<string, unknown>)
+const lastError = computed(() => {
+  const stateError = activeState.value.last_error
+  if (typeof stateError === 'string' && stateError.trim().length > 0) {
+    return stateError
+  }
+  return runError.value
+})
+const terminalMessage = computed(() => {
+  const message = activeRun.value?.last_message
+  return typeof message === 'string' && message.trim().length > 0
+    ? message
+    : 'The run stopped before reaching synthesis.'
+})
+const isFailed = computed(() => status.value === 'failed')
 
 const models = computed(() => settingsStore.models)
 
@@ -39,6 +54,10 @@ const showProgressOnly = computed(() => {
 
 const showReportOnly = computed(() => {
   return isComplete.value && hasReport.value
+})
+
+const showTerminalState = computed(() => {
+  return isComplete.value && !showReportOnly.value
 })
 
 const showEmptyState = computed(() => {
@@ -166,8 +185,8 @@ function threadId() {
       <div v-if="showProgressOnly" class="progress-view animate-fade-in">
         <!-- Progress Bar -->
         <ProgressBar
-          :current="((activeRun?.state as Record<string, unknown>)?.iteration_count as number) ?? 0"
-          :max="((activeRun?.state as Record<string, unknown>)?.max_iterations as number) ?? 6"
+          :current="(activeState.iteration_count as number) ?? 0"
+          :max="(activeState.max_iterations as number) ?? 6"
           label="Iteration"
         />
 
@@ -186,10 +205,45 @@ function threadId() {
             />
             <div class="support-grid">
               <TasksPanel
-                :tasks="((activeRun?.state as Record<string, unknown>)?.plan_tasks as any[]) ?? []"
+                :tasks="(activeState.plan_tasks as any[]) ?? []"
               />
               <SourcesPanel
-                :sources="((activeRun?.state as Record<string, unknown>)?.sources as any[]) ?? []"
+                :sources="(activeState.sources as any[]) ?? []"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal View (failed/cancelled without final report) -->
+      <div v-else-if="showTerminalState && activeRun" class="terminal-view animate-fade-in">
+        <div class="progress-grid">
+          <div class="progress-sidebar">
+            <TimelinePanel
+              :run="(activeRun as any)"
+            />
+            <LiveFeedPanel :events="events" />
+          </div>
+          <div class="progress-main">
+            <section class="terminal-card" :class="{ 'terminal-card--error': isFailed }">
+              <div class="terminal-card-header">
+                <div>
+                  <span class="text-eyebrow">Run Status</span>
+                  <h3>{{ isFailed ? 'Run failed before synthesis' : 'Run stopped before synthesis' }}</h3>
+                </div>
+                <StatusPill :status="status ?? 'failed'" />
+              </div>
+              <p class="terminal-message">{{ terminalMessage }}</p>
+              <pre v-if="lastError" class="terminal-error text-mono">{{ lastError }}</pre>
+              <p v-else class="terminal-note">No additional error details were captured for this run.</p>
+            </section>
+            <ReportPanel :run="(activeRun as any)" />
+            <div class="support-grid">
+              <TasksPanel
+                :tasks="(activeState.plan_tasks as any[]) ?? []"
+              />
+              <SourcesPanel
+                :sources="(activeState.sources as any[]) ?? []"
               />
             </div>
           </div>
@@ -423,6 +477,59 @@ function threadId() {
 .report-container {
   max-width: 860px;
   width: 100%;
+}
+
+.terminal-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.terminal-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.terminal-card--error {
+  border-color: var(--danger-medium);
+  background: linear-gradient(180deg, var(--danger-soft), var(--surface));
+}
+
+.terminal-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.terminal-message {
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.terminal-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.terminal-error {
+  margin: 0;
+  padding: var(--space-3);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(166, 35, 42, 0.08);
+  border: 1px solid rgba(166, 35, 42, 0.16);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────── */

@@ -4,7 +4,7 @@
 
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { AgentSettings, AppConfig } from '@/types'
+import type { AgentSettings, AppConfig, SaveSettingsRequest } from '@/types'
 import { api, ApiError } from '@/services/api'
 
 export const useSettingsStore = defineStore('settings', () => {
@@ -16,6 +16,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const modelsBaseUrl = ref('')
   const isLoading = ref(false)
   const isSaving = ref(false)
+  const isRefreshingSearxng = ref(false)
   const isFetchingModels = ref(false)
   const error = ref<string | null>(null)
   const savedSuccessfully = ref(false)
@@ -36,18 +37,14 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function saveSettings(data: Partial<AgentSettings>) {
+  async function saveSettings(data: SaveSettingsRequest) {
     isSaving.value = true
     error.value = null
     savedSuccessfully.value = false
     try {
       await api.saveSettings(data)
+      settings.value = await api.getSettings()
       savedSuccessfully.value = true
-      if (settings.value) {
-        Object.assign(settings.value, data)
-      } else {
-        settings.value = data as AgentSettings
-      }
       setTimeout(() => {
         savedSuccessfully.value = false
       }, 2000)
@@ -81,6 +78,20 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  async function refreshSearxngPool() {
+    isRefreshingSearxng.value = true
+    error.value = null
+    try {
+      await api.refreshSearxngPool()
+      settings.value = await api.getSettings()
+    } catch (err) {
+      error.value =
+        err instanceof ApiError ? err.message : 'Failed to refresh the SearXNG instance pool'
+    } finally {
+      isRefreshingSearxng.value = false
+    }
+  }
+
   return {
     // State
     settings,
@@ -89,6 +100,7 @@ export const useSettingsStore = defineStore('settings', () => {
     modelsBaseUrl,
     isLoading,
     isSaving,
+    isRefreshingSearxng,
     isFetchingModels,
     error,
     savedSuccessfully,
@@ -97,5 +109,6 @@ export const useSettingsStore = defineStore('settings', () => {
     saveSettings,
     fetchConfig,
     fetchModels,
+    refreshSearxngPool,
   }
 })

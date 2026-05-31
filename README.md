@@ -62,6 +62,8 @@ sequenceDiagram
   - **Revisión de Suficiencia**: El usuario valida si la información es suficiente o si requiere más iteraciones.
 - **Persistencia y Resiliencia**: Gracias a los *checkpointers* de LangGraph, el agente puede reanudar investigaciones largas tras fallos de red o límites de API, manteniendo el hilo de la memoria.
 - **Investigación Multisalto**: Capacidad de realizar búsquedas iterativas y reformular consultas para profundizar en temas complejos.
+- **Búsqueda SearXNG con Pool Persistido y Respaldo Local**: Puede fijar un pool de 5 instancias públicas desde `searx.space`, reutilizarlo en búsquedas sucesivas, elegir una al azar por query y, si el pool público queda bloqueado, caer automáticamente a una instancia local de SearXNG dentro de Docker Compose.
+- **Extracción HTML Mejorada**: Usa **Trafilatura** como primer intento para extraer contenido útil y conserva un *fallback* local basado en `HTMLParser` si la extracción avanzada falla.
 - **Generación de Informes de Grado Profesional**: Producción automática de documentos en **Markdown**, **PDF** (vía WeasyPrint con plantillas Jinja2) y visualizaciones de datos (Matplotlib/Plotly).
 
 ---
@@ -73,7 +75,8 @@ sequenceDiagram
 | **Orquestación** | [LangGraph](https://langchain-ai.github.io/langgraph/) |
 | **Lenguaje** | Python 3.12+ |
 | **Modelos (LLM)** | OpenAI, Ollama (Local) |
-| **Búsqueda** | DuckDuckGo, Tavily, Serper |
+| **Búsqueda** | DuckDuckGo, SearXNG (pool público con fallback local en Compose), Tavily, Serper |
+| **Extracción** | Trafilatura + fallback local con `HTMLParser` |
 | **Base de Datos** | SQLite (Local), PostgreSQL (Producción) |
 | **Web Interface** | FastAPI, Uvicorn, SSE (Server-Sent Events) |
 | **Reporting** | Jinja2, WeasyPrint, python-pptx |
@@ -88,11 +91,16 @@ El sistema utiliza `pydantic-settings` para gestionar la configuración. Es nece
 
 | Variable | Descripción | Ejemplo |
 | :--- | :--- | :--- |
-| `DEEP_RESEARCH_LLM_PROVIDER` | Proveedor de LLM (`openai` o `ollama`) | `openai` |
+| `DEEP_RESEARCH_MODEL_PROVIDER` | Proveedor de LLM (`openai` u `ollama`) | `openai` |
 | `DEEP_RESEARCH_OPENAI_API_KEY` | API Key de OpenAI (si aplica) | `sk-...` |
-| `DEEP_RESEARCH_SEARCH_PROVIDER` | Motor de búsqueda (`duckduckgo`, `tavily`, `serper`) | `tavily` |
+| `DEEP_RESEARCH_DEFAULT_SEARCH_PROVIDER` | Motor de búsqueda (`none`, `searxng`, `tavily`, `serper`) | `none` |
+| `DEEP_RESEARCH_SEARXNG_REGISTRY_URL` | Registro público de instancias SearXNG | `https://searx.space/data/instances.json` |
+| `DEEP_RESEARCH_SEARXNG_LOCAL_URL` | URL interna del fallback local de SearXNG dentro de Compose | `http://searxng:8080` |
+| `DEEP_RESEARCH_SEARXNG_POOL_SIZE` | Cantidad de instancias a fijar en el pool persistido | `5` |
 | `DEEP_RESEARCH_TAVILY_API_KEY` | API Key de Tavily (si aplica) | `tvly-...` |
-| `DEEP_RESEARCH_CHECKPOINT_DB_URL` | URL de conexión a la base de datos | `sqlite+aiosqlite:///./.local/db.sqlite3` |
+| `DEEP_RESEARCH_SERPER_API_KEY` | API Key de Serper (si aplica) | `serper-...` |
+| `DEEP_RESEARCH_POSTGRES_DB_URL` | URL de conexión a PostgreSQL | `postgresql://...` |
+| `DEEP_RESEARCH_SQLITE_DB_URL` | URL de conexión SQLite local | `sqlite+aiosqlite:///./.local/deep_research.sqlite3` |
 | `DEEP_RESEARCH_REPORT_OUTPUT_DIR` | Directorio donde se guardan los informes | `./reports` |
 
 ---
@@ -117,7 +125,7 @@ deep-research-agent-web
 Para entornos que requieren persistencia con PostgreSQL y una infraestructura completa, utiliza los scripts de automatización:
 
 ```bash
-# 1. Preparar el entorno y levantar Postgres
+# 1. Preparar el entorno y levantar el stack base (Postgres + SearXNG local)
 ./scripts/compose-agent.sh bootstrap
 
 # 2. Ejecutar una investigación dentro del contenedor
@@ -129,6 +137,18 @@ Para entornos que requieren persistencia con PostgreSQL y una infraestructura co
 # 4. Detener todo el entorno
 ./scripts/compose-agent.sh down
 ```
+
+### 3. Selección de SearXNG desde la UI
+
+Si eliges `SearXNG Public Pool` en la pantalla de *Settings*, el servidor puede:
+
+- fijar un pool persistido de 5 instancias públicas desde `searx.space`
+- reutilizar ese pool en CLI y Web App mientras no se refresque manualmente
+- elegir una instancia distinta al azar por búsqueda y hacer *fallback* al resto si una falla
+
+Si todas las instancias públicas seleccionadas devuelven bloqueos de acceso o *rate limiting*, el backend usa automáticamente la instancia local `searxng` del stack de Docker Compose como respaldo para no interrumpir la investigación.
+
+El botón `Refresh Pool` vuelve a seleccionar y persistir el pool sin necesidad de salir del flujo de Docker Compose.
 
 ---
 

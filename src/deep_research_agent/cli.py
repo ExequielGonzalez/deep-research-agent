@@ -8,7 +8,7 @@ from typing import Sequence
 
 from deep_research_agent.domain.models import HumanDecisionType, ResearchRequest
 from deep_research_agent.runtime.service import ResearchRuntimeService, RunNotFoundError, render_json
-from deep_research_agent.settings import AppSettings
+from deep_research_agent.settings import AppSettings, resolve_runtime_settings
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
 async def amain(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    settings = AppSettings()
+    settings = resolve_runtime_settings(AppSettings())
     service = ResearchRuntimeService(settings)
 
     try:

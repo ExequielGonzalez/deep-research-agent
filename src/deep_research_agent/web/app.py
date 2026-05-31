@@ -23,10 +23,19 @@ from deep_research_agent.domain.models import (
     ResearchRequest,
     RunRecord,
     RunStatus,
+    SearchProvider,
 )
 from deep_research_agent.runtime.events import runtime_event_scope
 from deep_research_agent.runtime.service import ResearchRuntimeService
-from deep_research_agent.settings import AppSettings, get_settings
+from deep_research_agent.services import ProviderConfigurationError
+from deep_research_agent.services.search import refresh_searxng_instance_pool
+from deep_research_agent.settings import (
+    AppSettings,
+    get_settings,
+    load_persisted_app_settings,
+    resolve_runtime_settings,
+    save_persisted_app_settings,
+)
 
 # Try to load Vue frontend build; fall back to legacy embedded UI
 # Docker: __file__ = /usr/local/lib/python3.12/site-packages/deep_research_agent/web/app.py
@@ -83,32 +92,15 @@ class SettingsRequest(BaseModel):
     openai_api_key: str = ""
     openai_base_url: str = ""
     ollama_base_url: str = ""
-    default_search_provider: str = "none"
+    default_search_provider: SearchProvider = SearchProvider.NONE
     tavily_api_key: str = ""
     serper_api_key: str = ""
+    clear_tavily_api_key: bool = False
+    clear_serper_api_key: bool = False
     max_iterations: int = 6
     max_sources_per_task: int = 8
     total_token_budget: int = 120_000
     max_notes: int = 200
-
-
-_SETTINGS_PATH = ".local/settings.json"
-
-
-def _load_settings() -> dict[str, Any]:
-    try:
-        with open(_SETTINGS_PATH, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _save_settings(data: dict[str, Any]) -> None:
-    import os
-
-    os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-    with open(_SETTINGS_PATH, "w") as f:
-        json.dump(data, f, indent=2)
 
 
 def _default_service_factory(settings: AppSettings) -> ResearchRuntimeService:
@@ -118,25 +110,25 @@ def _default_service_factory(settings: AppSettings) -> ResearchRuntimeService:
 def _build_runtime_settings(
     base_settings: AppSettings, request: CreateRunRequest
 ) -> AppSettings:
-    stored = _load_settings()
-    update = {
+    overrides: dict[str, Any] = {
         "model_provider": ModelProvider.OPENAI,
         "model_name": request.model_name or base_settings.model_name,
-        "openai_base_url": (
-            request.openai_base_url or base_settings.openai_base_url
-        ).rstrip("/"),
-        "openai_api_key": request.openai_api_key
-        or base_settings.openai_api_key
-        or "local",
-        "llm_request_timeout_seconds": request.llm_request_timeout_seconds
-        or base_settings.llm_request_timeout_seconds,
-        "max_iterations": request.max_iterations
-        or stored.get("max_iterations")
-        or base_settings.max_iterations,
+        "openai_base_url": request.openai_base_url,
+        "openai_api_key": request.openai_api_key,
+        "llm_request_timeout_seconds": request.llm_request_timeout_seconds,
+        "max_iterations": request.max_iterations,
     }
-    return AppSettings.model_validate(
-        {**base_settings.model_dump(mode="python"), **update}
+    resolved = resolve_runtime_settings(
+        base_settings,
+        overrides=overrides,
     )
+    if not resolved.openai_api_key:
+        return resolved.model_copy(update={"openai_api_key": "local"})
+    return resolved
+
+
+def _has_secret(value: str | None) -> bool:
+    return bool(value and value.strip())
 
 
 def _serialize_run(
@@ -220,6 +212,7 @@ class RunExecutionManager:
             "model_name": settings.model_name,
             "openai_base_url": settings.openai_base_url,
             "llm_request_timeout_seconds": settings.llm_request_timeout_seconds,
+            "default_search_provider": settings.default_search_provider.value,
         }
 
     def subscribe(self, thread_id: str) -> asyncio.Queue[dict[str, Any]]:
@@ -378,7 +371,7 @@ def create_app(
 
     @app.get("/api/settings")
     async def get_app_settings() -> dict[str, Any]:
-        stored = _load_settings()
+        stored = load_persisted_app_settings()
         return {
             "openai_api_key": stored.get("openai_api_key", ""),
             "openai_base_url": stored.get(
@@ -387,7 +380,26 @@ def create_app(
             "ollama_base_url": stored.get(
                 "ollama_base_url", base_settings.ollama_base_url
             ),
-            "default_search_provider": stored.get("default_search_provider", "none"),
+            "default_search_provider": stored.get(
+                "default_search_provider", base_settings.default_search_provider.value
+            ),
+            "tavily_api_key": "",
+            "serper_api_key": "",
+            "searxng_pool_size": stored.get(
+                "searxng_pool_size", base_settings.searxng_pool_size
+            ),
+            "searxng_selected_instances": stored.get(
+                "searxng_selected_instances", base_settings.searxng_selected_instances
+            ),
+            "searxng_selected_at": stored.get(
+                "searxng_selected_at", base_settings.searxng_selected_at
+            ),
+            "has_tavily_api_key": _has_secret(
+                stored.get("tavily_api_key") or base_settings.tavily_api_key
+            ),
+            "has_serper_api_key": _has_secret(
+                stored.get("serper_api_key") or base_settings.serper_api_key
+            ),
             "max_iterations": stored.get(
                 "max_iterations", base_settings.max_iterations
             ),
@@ -402,29 +414,48 @@ def create_app(
 
     @app.post("/api/settings")
     async def post_app_settings(request: SettingsRequest) -> dict[str, str]:
-        stored = _load_settings()
+        stored = load_persisted_app_settings()
         if request.openai_api_key:
-            stored["openai_api_key"] = request.openai_api_key
+            stored["openai_api_key"] = request.openai_api_key.strip()
         if request.openai_base_url:
-            stored["openai_base_url"] = request.openai_base_url
+            stored["openai_base_url"] = request.openai_base_url.strip().rstrip("/")
         if request.ollama_base_url:
-            stored["ollama_base_url"] = request.ollama_base_url
-        if request.default_search_provider:
-            stored["default_search_provider"] = request.default_search_provider
+            stored["ollama_base_url"] = request.ollama_base_url.strip()
+        stored["default_search_provider"] = request.default_search_provider.value
+        if request.clear_tavily_api_key:
+            stored.pop("tavily_api_key", None)
         if request.tavily_api_key:
-            stored["tavily_api_key"] = request.tavily_api_key
+            stored["tavily_api_key"] = request.tavily_api_key.strip()
+        if request.clear_serper_api_key:
+            stored.pop("serper_api_key", None)
         if request.serper_api_key:
-            stored["serper_api_key"] = request.serper_api_key
+            stored["serper_api_key"] = request.serper_api_key.strip()
         if request.max_iterations and request.max_iterations != 6:
             stored["max_iterations"] = request.max_iterations
+        else:
+            stored.pop("max_iterations", None)
         if request.max_sources_per_task and request.max_sources_per_task != 8:
             stored["max_sources_per_task"] = request.max_sources_per_task
+        else:
+            stored.pop("max_sources_per_task", None)
         if request.total_token_budget and request.total_token_budget != 120_000:
             stored["total_token_budget"] = request.total_token_budget
+        else:
+            stored.pop("total_token_budget", None)
         if request.max_notes and request.max_notes != 200:
             stored["max_notes"] = request.max_notes
-        _save_settings(stored)
+        else:
+            stored.pop("max_notes", None)
+        save_persisted_app_settings(stored)
         return {"status": "ok"}
+
+    @app.post("/api/settings/searxng/refresh")
+    async def refresh_app_searxng_pool() -> dict[str, Any]:
+        try:
+            resolved_settings = resolve_runtime_settings(base_settings)
+            return await refresh_searxng_instance_pool(resolved_settings)
+        except ProviderConfigurationError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @app.get("/api/models")
     async def model_catalog() -> dict[str, Any]:
@@ -640,6 +671,10 @@ def create_app(
         async def spa_fallback(full_path: str) -> str:
             if full_path.startswith("api/"):
                 raise HTTPException(status_code=404, detail="Not found")
+            return INDEX_HTML
+    else:
+        @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+        async def legacy_index() -> str:
             return INDEX_HTML
 
     return app

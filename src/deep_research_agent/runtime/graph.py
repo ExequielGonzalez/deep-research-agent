@@ -278,16 +278,27 @@ class ResearchGraphNodes:
         }
 
     async def synthesize_report(self, state: ResearchGraphState) -> dict[str, Any]:
+        sources = list(state.get("sources", []))
+        evidence = state.get("evidence", [])
+        evidence_summary = self._evidence_summary(state)
+
         synthesized = await self.services.llm.synthesize_report(
             request=state["request"],
             plan_title=state.get("plan_title"),
             plan_summary=state.get("plan_summary"),
             plan_tasks=state.get("plan_tasks", []),
-            sources=state.get("sources", []),
-            evidence_summary=self._evidence_summary(state),
+            sources=sources,
+            evidence_summary=evidence_summary,
             reflections=state.get("reflections", []),
         )
-        formatted = self.services.report_formatter.format(report=synthesized, sources=state.get("sources", []))
+
+        # Auto-assign source_ids to findings when the LLM leaves them empty.
+        # Match by scanning body_markdown for title keywords, domain mentions, and URLs.
+        synthesized = _auto_assign_sources(synthesized, sources)
+        # Inject domain citations inline if the LLM did not include them.
+        synthesized = _auto_inject_domain_citations(synthesized, sources)
+
+        formatted = self.services.report_formatter.format(report=synthesized, sources=sources)
         return {
             "status": RunStatus.COMPLETED,
             "report_sections": formatted.sections,
@@ -456,6 +467,100 @@ class ResearchGraphNodes:
                 )
             )
         return follow_up_tasks
+
+
+def _tokenize(value: str) -> set[str]:
+    """Extract lowercase words of 3+ chars from a string."""
+    import re
+
+    return {word.lower() for word in re.findall(r"[A-Za-z0-9]{3,}", value)}
+
+
+def _auto_assign_sources(report: SynthesizedReport, sources: list[SourceRecord]) -> SynthesizedReport:
+    """When the LLM leaves source_ids empty, auto-assign by keyword overlap."""
+    from urllib import parse
+
+    if not sources:
+        return report
+
+    updated_findings: list = []
+    source_index: list[tuple[str, set[str], str]] = []
+    for src in sources:
+        keywords = _tokenize(f"{src.title} {src.snippet or ''} {src.url}")
+        try:
+            domain = parse.urlparse(src.url).netloc.lower().removeprefix("www.")
+        except Exception:
+            domain = ""
+        if domain:
+            keywords.add(domain)
+            # Also add the bare domain parts
+            for part in domain.split("."):
+                if len(part) >= 3:
+                    keywords.add(part)
+        source_index.append((src.source_id, keywords, domain))
+
+    for finding in report.findings:
+        if finding.source_ids:
+            updated_findings.append(finding)
+            continue
+
+        body_tokens = _tokenize(finding.body_markdown)
+        title_tokens = _tokenize(finding.title)
+        all_tokens = body_tokens | title_tokens
+
+        scored: list[tuple[str, float]] = []
+        for src_id, src_keywords, domain in source_index:
+            overlap = len(all_tokens & src_keywords)
+            if overlap > 0:
+                # Bonus if domain is mentioned in body
+                domain_bonus = 2.0 if domain and (domain in finding.body_markdown.lower() or domain in finding.title.lower()) else 0.0
+                scored.append((src_id, overlap + domain_bonus))
+
+        scored.sort(key=lambda item: -item[1])
+        matched_ids = [src_id for src_id, _ in scored[:5]]
+
+        if matched_ids:
+            updated_findings.append(finding.model_copy(update={"source_ids": matched_ids}))
+        else:
+            updated_findings.append(finding)
+
+    return report.model_copy(update={"findings": updated_findings})
+
+
+def _auto_inject_domain_citations(report: SynthesizedReport, sources: list[SourceRecord]) -> SynthesizedReport:
+    """When a finding already has source_ids but body_markdown doesn't mention any domain, inject a citation block."""
+    from urllib import parse
+
+    source_map = {src.source_id: src for src in sources}
+    updated_findings: list = []
+
+    for finding in report.findings:
+        body = finding.body_markdown.strip()
+        sources_in_finding = [source_map[sid] for sid in finding.source_ids if sid in source_map]
+        if not sources_in_finding:
+            updated_findings.append(finding)
+            continue
+
+        mentioned_domains = []
+        for src in sources_in_finding:
+            try:
+                domain = parse.urlparse(src.url).netloc.lower().removeprefix("www.")
+            except Exception:
+                domain = src.url.lower()
+            mentioned_domains.append(domain)
+
+        # Check if any domain is already mentioned in body
+        any_mentioned = any(domain in body.lower() for domain in mentioned_domains)
+
+        if not any_mentioned and mentioned_domains:
+            citation_line = "\n\n*Sources: " + ", ".join(
+                f"[{src.title}]({src.url})" for src in sources_in_finding
+            ) + "*"
+            body = body + citation_line
+
+        updated_findings.append(finding.model_copy(update={"body_markdown": body}))
+
+    return report.model_copy(update={"findings": updated_findings})
 
 
 def state_source_record(**kwargs: Any):

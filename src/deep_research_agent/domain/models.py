@@ -103,6 +103,7 @@ class SearchProvider(str, Enum):
     SERPER = "serper"
     FIRECRAWL = "firecrawl"
     NONE = "none"
+    SEARXNG = "searxng"
 
 
 class RunStatus(str, Enum):
