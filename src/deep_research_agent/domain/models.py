@@ -178,15 +178,18 @@ class PlanTask(DomainModel):
     parent_task_id: str | None = None
     success_criteria: list[str] = Field(default_factory=list)
     assigned_node: str | None = None
+    expected_sections: list[str] = Field(default_factory=list)
+    preferred_source_types: list[str] = Field(default_factory=list)
+    sufficiency_criteria: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("priority", mode="before")
     @classmethod
     def normalize_priority(cls, value: Any) -> Any:
         return _coerce_priority(value)
 
-    @field_validator("success_criteria", mode="before")
+    @field_validator("success_criteria", "expected_sections", "preferred_source_types", mode="before")
     @classmethod
-    def normalize_success_criteria(cls, value: Any) -> Any:
+    def normalize_string_lists(cls, value: Any) -> Any:
         return _coerce_string_list(value)
 
 
@@ -195,11 +198,30 @@ class ResearchPlan(DomainModel):
     normalized_query: str
     plan_summary: str
     tasks: list[PlanTask] = Field(default_factory=list)
+    mandatory_questions: list[str] = Field(default_factory=list)
+    working_hypotheses: list[str] = Field(default_factory=list)
+    search_strategy: str = ""
+    source_type_preferences: list[str] = Field(default_factory=list)
+    time_horizon: str = ""
+    coverage_risks: list[str] = Field(default_factory=list)
+    closure_conditions: list[str] = Field(default_factory=list)
 
     @field_validator("tasks", mode="before")
     @classmethod
     def normalize_tasks(cls, value: Any) -> Any:
         return _coerce_model_list(value)
+
+    @field_validator(
+        "mandatory_questions",
+        "working_hypotheses",
+        "coverage_risks",
+        "closure_conditions",
+        "source_type_preferences",
+        mode="before",
+    )
+    @classmethod
+    def normalize_string_lists(cls, value: Any) -> Any:
+        return _coerce_string_list(value)
 
 
 class SearchResult(DomainModel):
@@ -225,6 +247,11 @@ class SourceRecord(DomainModel):
     retrieved_at: datetime = Field(default_factory=utc_now)
     published_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    relevance_score: float = 0.0
+    reliability_score: float = 0.0
+    selection_justification: str = ""
+    authority_tier: str = "CONTEXTUAL"
+    discovery_iteration: int = 0
 
 
 class EvidenceRecord(DomainModel):
@@ -235,6 +262,43 @@ class EvidenceRecord(DomainModel):
     rationale: str | None = None
     confidence: float = 0.0
     supports_task_id: str | None = None
+    evidence_type: str = "claim"
+    anchor_quotes: list[str] = Field(default_factory=list)
+    claim_normalization: str = ""
+    confidence_signal: str = ""
+    contradiction_flag: bool = False
+    coverage_by_section: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("anchor_quotes", mode="before")
+    @classmethod
+    def normalize_anchor_quotes(cls, value: Any) -> Any:
+        return _coerce_string_list(value)
+
+
+class EvidenceCluster(DomainModel):
+    cluster_id: str = Field(default_factory=new_id)
+    section_ref: str
+    task_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    coverage_metric: float = 0.0
+    blockers: list[str] = Field(default_factory=list)
+    contradictions: list[str] = Field(default_factory=list)
+    confidence_score: float = 0.0
+
+    @field_validator("task_ids", "evidence_ids", "blockers", "contradictions", mode="before")
+    @classmethod
+    def normalize_string_lists(cls, value: Any) -> Any:
+        return _coerce_string_list(value)
+
+
+class TriageDecision(DomainModel):
+    source_id: str
+    decision: str = "included"
+    relevance_score: float = 0.0
+    reliability_score: float = 0.0
+    authority_tier: str = "CONTEXTUAL"
+    justification: str = ""
+    excluded_reason: str = ""
 
 
 class HumanReviewRequest(DomainModel):
@@ -244,6 +308,19 @@ class HumanReviewRequest(DomainModel):
     allowed_decisions: list[HumanDecisionType] = Field(default_factory=list)
     context: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
+    plan_title: str | None = None
+    plan_summary: str | None = None
+    coverage_matrix: dict[str, Any] | None = None
+    open_gaps: list[str] = Field(default_factory=list)
+    discarded_sources: list[dict[str, Any]] = Field(default_factory=list)
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    confidence_score: float = 0.0
+    structured_options: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("open_gaps", mode="before")
+    @classmethod
+    def normalize_open_gaps(cls, value: Any) -> Any:
+        return _coerce_string_list(value)
 
 
 class HumanDecision(DomainModel):
@@ -395,10 +472,15 @@ class SynthesisSection(DomainModel):
     body_markdown: str
     source_ids: list[str] = Field(default_factory=list)
     summary_points: list[str] = Field(default_factory=list)
+    allowed_source_ids: list[str] = Field(default_factory=list)
+    evidence_cluster_refs: list[str] = Field(default_factory=list)
+    quote_anchors: list[str] = Field(default_factory=list)
+    thesis_statement: str = ""
+    claim_citations: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
-    def normalize_local_model_keys(cls, value: Any) -> Any:
+    def normalize_local_keys(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
 
@@ -424,9 +506,14 @@ class SynthesisSection(DomainModel):
             "body_markdown": body_markdown,
             "source_ids": value.get("source_ids") or value.get("supporting_source_ids", []),
             "summary_points": summary_points,
+            "allowed_source_ids": value.get("allowed_source_ids", []),
+            "evidence_cluster_refs": value.get("evidence_cluster_refs", []),
+            "quote_anchors": value.get("quote_anchors", []),
+            "thesis_statement": value.get("thesis_statement", ""),
+            "claim_citations": value.get("claim_citations", []),
         }
 
-    @field_validator("source_ids", "summary_points", mode="before")
+    @field_validator("source_ids", "summary_points", "allowed_source_ids", "evidence_cluster_refs", "quote_anchors", mode="before")
     @classmethod
     def normalize_string_lists(cls, value: Any) -> Any:
         return _coerce_string_list(value)
@@ -475,3 +562,29 @@ class RuntimeCommandResult(DomainModel):
     interrupts: list[dict[str, Any]] = Field(default_factory=list)
     state: dict[str, Any] = Field(default_factory=dict)
     resume_supported: bool = False
+
+
+class QualityGateResult(DomainModel):
+    gate_id: str = Field(default_factory=new_id)
+    min_usable_evidence: bool = True
+    orphan_sections_check: bool = True
+    conclusion_present: bool = True
+    methodology_consistent: bool = True
+    claim_traceability: bool = True
+    weak_evidence_limits: bool = True
+    issues: list[str] = Field(default_factory=list)
+    passed: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def compute_passed(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            value["passed"] = all([
+                value.get("min_usable_evidence", True),
+                value.get("orphan_sections_check", True),
+                value.get("conclusion_present", True),
+                value.get("methodology_consistent", True),
+                value.get("claim_traceability", True),
+                value.get("weak_evidence_limits", True),
+            ])
+        return value

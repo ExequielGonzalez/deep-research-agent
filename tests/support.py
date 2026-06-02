@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from deep_research_agent.domain.models import (
     EvidenceRecord,
@@ -16,6 +17,7 @@ from deep_research_agent.domain.models import (
     SourceRecord,
     SynthesisSection,
     SynthesizedReport,
+    TriageDecision,
 )
 from deep_research_agent.services import ResearchServiceBundle
 from deep_research_agent.services.extraction import ExtractionResult
@@ -41,6 +43,9 @@ class FakeLLMService:
                     section_title="Market Drivers",
                     priority=1,
                     success_criteria=["At least two credible market signals."],
+                    expected_sections=["Market size", "Demand trends", "Key drivers"],
+                    preferred_source_types=["academic", "news"],
+                    sufficiency_criteria={"min_evidence": 2, "min_sources": 2},
                 ),
                 PlanTask(
                     title="Review competitive positioning",
@@ -49,8 +54,23 @@ class FakeLLMService:
                     section_title="Competitive Positioning",
                     priority=2,
                     success_criteria=["Evidence for at least two vendors."],
+                    expected_sections=["Vendor landscape", "Market share"],
+                    preferred_source_types=["web", "news"],
+                    sufficiency_criteria={"min_evidence": 2, "min_sources": 2},
                 ),
             ],
+            mandatory_questions=[
+                "What are the primary demand drivers for AI infrastructure in 2025?",
+                "Which vendors dominate the market and what are their strategic moves?",
+            ],
+            working_hypotheses=[
+                "Demand is driven by generative AI adoption in enterprise.",
+                "Supply-chain constraints are a key bottleneck.",
+            ],
+            search_strategy="Prioritize academic and news sources for market data, supplement with industry blogs.",
+            source_type_preferences=["academic", "news", "web"],
+            coverage_risks=["Supply-chain data may be sparse", "Vendor financials may be proprietary"],
+            closure_conditions=["At least 2 sources per section with evidence confidence > 0.6"],
         )
 
     async def reflect_research(
@@ -220,12 +240,30 @@ class FakeExtractor:
 
 
 
+class FakeTriageService:
+    async def triage(self, *, sources: list[SourceRecord], plan_tasks: list[PlanTask], request: Any) -> list[TriageDecision]:
+        decisions = []
+        for source in sources:
+            decisions.append(
+                TriageDecision(
+                    source_id=source.source_id,
+                    decision="included",
+                    relevance_score=0.75,
+                    reliability_score=0.70,
+                    authority_tier="PRIMARY",
+                    justification="Fake triage: source accepted.",
+                )
+            )
+        return decisions
+
+
 def build_fake_bundle() -> ResearchServiceBundle:
     return ResearchServiceBundle(
         llm=FakeLLMService(),
         search=FakeSearchService(),
         extractor=FakeExtractor(),
         report_formatter=ReportFormatter(),
+        source_triage=FakeTriageService(),
     )
 
 

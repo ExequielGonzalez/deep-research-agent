@@ -65,6 +65,14 @@ export interface HumanReviewRequest {
   prompt: string
   allowed_decisions: HumanDecisionType[]
   context?: Record<string, unknown>
+  plan_title?: string | null
+  plan_summary?: string | null
+  coverage_matrix?: Record<string, unknown> | null
+  open_gaps?: string[]
+  discarded_sources?: Record<string, unknown>[]
+  conflicts?: Record<string, unknown>[]
+  confidence_score?: number
+  structured_options?: Record<string, unknown>[]
 }
 
 export interface PlanTask {
@@ -77,6 +85,9 @@ export interface PlanTask {
   depends_on: string[]
   section_title?: string
   success_criteria?: string[]
+  expected_sections?: string[]
+  preferred_source_types?: string[]
+  sufficiency_criteria?: Record<string, unknown>
 }
 
 export interface SourceRecord {
@@ -90,6 +101,11 @@ export interface SourceRecord {
   task_ids: string[]
   retrieved_at?: string
   published_at?: string
+  relevance_score?: number
+  reliability_score?: number
+  authority_tier?: 'PRIMARY' | 'CONTEXTUAL' | 'EXCLUDED'
+  selection_justification?: string
+  discovery_iteration?: number
 }
 
 export interface ReportSection {
@@ -272,6 +288,19 @@ export interface ResearchGraphState {
   final_report_path?: string
   final_report_status?: string
   iteration_count?: number
+  coverage_metrics?: {
+    total_evidence?: number
+    total_tasks?: number
+    covered_tasks?: number
+    coverage_pct?: number
+    task_coverage?: Record<string, {
+      evidence_count: number
+      source_count: number
+      avg_confidence: number
+      has_contradictions: boolean
+      primary_sources: string[]
+    }>
+  }
   [key: string]: unknown
 }
 

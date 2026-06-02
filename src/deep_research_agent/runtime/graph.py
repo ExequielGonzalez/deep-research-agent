@@ -9,11 +9,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from deep_research_agent.domain.models import (
+    EvidenceCluster,
     HumanDecision,
     HumanDecisionType,
     HumanReviewKind,
     HumanReviewRequest,
     PlanTask,
+    QualityGateResult,
     ReflectionOutput,
     ResearchPlan,
     ResearchRequest,
@@ -22,9 +24,11 @@ from deep_research_agent.domain.models import (
     SearchResult,
     SectionStatus,
     TaskStatus,
+    TriageDecision,
 )
 from deep_research_agent.domain.state import ResearchGraphState
 from deep_research_agent.services import ResearchServiceBundle
+from deep_research_agent.services.llm import _truncate_text
 from deep_research_agent.services.search import canonicalize_url, stable_hash
 from deep_research_agent.settings import AppSettings
 
@@ -67,6 +71,14 @@ class ResearchGraphNodes:
                 "tasks": [task.model_dump(mode="json") for task in state.get("plan_tasks", [])],
                 "max_iterations": state["max_iterations"],
             },
+            plan_title=state.get("plan_title"),
+            plan_summary=state.get("plan_summary"),
+            coverage_matrix={},
+            open_gaps=[],
+            discarded_sources=[],
+            conflicts=[],
+            confidence_score=0.0,
+            structured_options=[],
         )
         return {
             "status": RunStatus.INTERRUPTED,
@@ -147,6 +159,60 @@ class ResearchGraphNodes:
 
         return {"plan_tasks": task_updates, "sources": new_sources, "notes": search_notes}
 
+    async def triage_sources(self, state: ResearchGraphState) -> dict[str, Any]:
+        if not self.services.source_triage:
+            return {"notes": ["Source triage skipped — feature flag not enabled."]}
+
+        sources = state.get("sources", [])
+        plan_tasks = state.get("plan_tasks", [])
+        request = state["request"]
+
+        decisions = await self.services.source_triage.triage(
+            sources=sources,
+            plan_tasks=plan_tasks,
+            request=request,
+        )
+
+        included_source_ids = {d.source_id for d in decisions if d.decision == "included"}
+        excluded_source_ids = {d.source_id for d in decisions if d.decision == "excluded"}
+
+        updated_sources = []
+        for source in sources:
+            if source.source_id in excluded_source_ids:
+                decision = next((d for d in decisions if d.source_id == source.source_id), None)
+                updated_sources.append(
+                    source.model_copy(
+                        update={
+                            "relevance_score": decision.relevance_score if decision else 0.0,
+                            "reliability_score": decision.reliability_score if decision else 0.0,
+                            "authority_tier": "EXCLUDED",
+                            "selection_justification": decision.justification if decision else "",
+                        }
+                    )
+                )
+            else:
+                decision = next((d for d in decisions if d.source_id == source.source_id), None)
+                updated_sources.append(
+                    source.model_copy(
+                        update={
+                            "relevance_score": decision.relevance_score if decision else 0.0,
+                            "reliability_score": decision.reliability_score if decision else 0.0,
+                            "authority_tier": decision.authority_tier if decision else "CONTEXTUAL",
+                            "selection_justification": decision.justification if decision else "",
+                        }
+                    )
+                )
+
+        excluded_count = len(excluded_source_ids)
+        included_count = len(included_source_ids)
+        notes = [f"Source triage: {included_count} included, {excluded_count} excluded."]
+
+        return {
+            "sources": updated_sources,
+            "triage_decisions": decisions,
+            "notes": notes,
+        }
+
     async def extract_evidence(self, state: ResearchGraphState) -> dict[str, Any]:
         evidence = []
         notes: list[str] = []
@@ -180,18 +246,20 @@ class ResearchGraphNodes:
         return {"evidence": evidence, "plan_tasks": task_updates, "notes": notes}
 
     async def reflect_research(self, state: ResearchGraphState) -> dict[str, Any]:
+        evidence_summary = self._evidence_summary(state)
+        coverage_metrics = self._compute_coverage_metrics(state, evidence_summary)
         reflection = await self.services.llm.reflect_research(
             request=state["request"],
             plan_tasks=state.get("plan_tasks", []),
             sources=state.get("sources", []),
-            evidence_summary=self._evidence_summary(state),
+            evidence_summary=evidence_summary,
             iteration_count=state["iteration_count"],
             max_iterations=state["max_iterations"],
         )
         task_updates = self._task_updates_from_reflection(
             plan_tasks=state.get("plan_tasks", []),
             reflection=reflection,
-            evidence_summary=self._evidence_summary(state),
+            evidence_summary=evidence_summary,
         )
         follow_up_tasks = self._follow_up_tasks(reflection)
         notes = [reflection.summary]
@@ -203,6 +271,7 @@ class ResearchGraphNodes:
             "reflections": [reflection],
             "plan_tasks": [*task_updates, *follow_up_tasks],
             "notes": notes,
+            "coverage_metrics": coverage_metrics,
         }
 
     async def prepare_sufficiency_review(self, state: ResearchGraphState) -> dict[str, Any]:
@@ -211,6 +280,29 @@ class ResearchGraphNodes:
         prompt = "Review the research sufficiency before final synthesis."
         if guard_reached:
             prompt = "The iteration guard was reached. Review whether to synthesize with current evidence or stop."
+
+        coverage_matrix = state.get("coverage_metrics", {})
+        task_coverage = coverage_matrix.get("task_coverage", {})
+        open_gaps = []
+        discarded_sources = []
+        conflicts = []
+        confidence_score = reflection.confidence
+
+        for task_id, coverage in task_coverage.items():
+            if coverage.get("evidence_count", 0) == 0:
+                open_gaps.append(f"Task {task_id}: no evidence collected")
+            if coverage.get("has_contradictions"):
+                conflicts.append(f"Task {task_id}: conflicting evidence detected")
+
+        triage_decisions = state.get("triage_decisions", [])
+        for decision in triage_decisions:
+            if decision.decision == "excluded":
+                discarded_sources.append({
+                    "source_id": decision.source_id,
+                    "reason": decision.excluded_reason,
+                    "relevance": decision.relevance_score,
+                })
+
         review = HumanReviewRequest(
             review_kind=HumanReviewKind.SUFFICIENCY_REVIEW,
             prompt=prompt,
@@ -223,6 +315,19 @@ class ResearchGraphNodes:
                 "reflection": reflection.model_dump(mode="json"),
                 "evidence_summary": self._evidence_summary(state),
             },
+            plan_title=state.get("plan_title"),
+            plan_summary=state.get("plan_summary"),
+            coverage_matrix=coverage_matrix,
+            open_gaps=open_gaps,
+            discarded_sources=discarded_sources,
+            conflicts=conflicts,
+            confidence_score=confidence_score,
+            structured_options=[
+                {"type": "add_query", "label": "Add search query"},
+                {"type": "extend_iterations", "label": "Extend iterations"},
+                {"type": "change_source_policy", "label": "Change source policy"},
+                {"type": "request_partial_replan", "label": "Request partial replan"},
+            ],
         )
         return {
             "status": RunStatus.INTERRUPTED,
@@ -298,7 +403,14 @@ class ResearchGraphNodes:
         # Inject domain citations inline if the LLM did not include them.
         synthesized = _auto_inject_domain_citations(synthesized, sources)
 
-        formatted = self.services.report_formatter.format(report=synthesized, sources=sources)
+        reflections = state.get("reflections", [])
+        formatted = self.services.report_formatter.format(
+            report=synthesized,
+            sources=sources,
+            confidence_score=reflections[-1].confidence if reflections else 0.0,
+            evidence_count=len(evidence),
+            iteration_count=state["iteration_count"],
+        )
         return {
             "status": RunStatus.COMPLETED,
             "report_sections": formatted.sections,
@@ -317,6 +429,94 @@ class ResearchGraphNodes:
             "notes": ["Run cancelled by human review."],
         }
 
+    async def quality_gate(self, state: ResearchGraphState) -> dict[str, Any]:
+        settings = self.settings
+        findings = []
+        for section in state.get("report_sections", []):
+            findings.append({
+                "title": section.title,
+                "source_ids": section.source_ids,
+                "content": section.content_markdown,
+            })
+
+        evidence = state.get("evidence", [])
+        reflections = state.get("reflections", [])
+        last_reflection = reflections[-1] if reflections else None
+
+        issues: list[str] = []
+        min_evidence = settings.quality_gate_min_evidence
+        has_min_evidence = len(evidence) >= min_evidence
+        if not has_min_evidence:
+            issues.append(f"Only {len(evidence)} evidence items (minimum: {min_evidence})")
+
+        orphan_check = True
+        for finding in findings:
+            if not finding["source_ids"] and finding["content"].strip():
+                orphan_check = False
+                issues.append(f"Orphan section '{finding['title']}' has no source backing")
+        max_orphans = settings.quality_gate_max_orphan_sections
+        orphan_count = sum(1 for f in findings if not f["source_ids"] and f["content"].strip())
+        if orphan_count > max_orphans:
+            issues.append(f"{orphan_count} orphan sections exceed limit of {max_orphans}")
+
+        conclusion_present = True
+        if settings.quality_gate_require_conclusion:
+            has_conclusion = any(s.title.lower() == "conclusion" for s in state.get("report_sections", []))
+            if not has_conclusion:
+                conclusion_present = False
+                issues.append("Missing mandatory conclusion section")
+
+        methodology_consistent = True
+        if settings.quality_gate_require_methodology:
+            has_methodology = any(s.title.lower() == "methodology" for s in state.get("report_sections", []))
+            if not has_methodology:
+                methodology_consistent = False
+                issues.append("Missing mandatory methodology section")
+
+        claim_traceability = True
+        if settings.quality_gate_claim_traceability:
+            for finding in findings:
+                if finding["source_ids"]:
+                    for sid in finding["source_ids"]:
+                        if not any(f"[{i+1}]" in finding["content"] for i, _ in enumerate(state.get("citation_records", []))):
+                            pass
+                else:
+                    if finding["content"].strip():
+                        claim_traceability = False
+
+        weak_evidence_limits = True
+        if last_reflection:
+            weak_count = sum(1 for e in evidence if e.confidence < settings.quality_gate_weak_evidence_limit)
+            if weak_count > len(evidence) * 0.3:
+                weak_evidence_limits = False
+                issues.append(f"{weak_count} evidence items below weak confidence threshold")
+
+        passed = all([
+            has_min_evidence,
+            orphan_count <= max_orphans,
+            conclusion_present,
+            methodology_consistent,
+            claim_traceability,
+            weak_evidence_limits,
+        ])
+
+        gate_result = QualityGateResult(
+            min_usable_evidence=has_min_evidence,
+            orphan_sections_check=orphan_count <= max_orphans,
+            conclusion_present=conclusion_present,
+            methodology_consistent=methodology_consistent,
+            claim_traceability=claim_traceability,
+            weak_evidence_limits=weak_evidence_limits,
+            issues=issues,
+            passed=passed,
+        )
+
+        notes = ["Quality gate passed."] if passed else [f"Quality gate failed: {'; '.join(issues)}"]
+        return {
+            "quality_gates": [gate_result],
+            "notes": notes,
+        }
+
     def route_after_plan_review(self, state: ResearchGraphState) -> str:
         last_decision = state["human_decisions"][-1]
         if last_decision.decision_type is HumanDecisionType.STOP:
@@ -327,7 +527,19 @@ class ResearchGraphNodes:
 
     def route_after_reflection(self, state: ResearchGraphState) -> str:
         reflection = state["reflections"][-1]
-        if reflection.needs_more_research and state["iteration_count"] < state["max_iterations"] and not reflection.needs_human_input:
+        if reflection.needs_human_input:
+            return "prepare_sufficiency_review"
+        if reflection.needs_more_research and state["iteration_count"] < state["max_iterations"]:
+            coverage = state.get("coverage_metrics", {})
+            coverage_pct = coverage.get("coverage_pct", 0)
+            task_coverage = coverage.get("task_coverage", {})
+            contradiction_count = sum(
+                1 for tc in task_coverage.values() if tc.get("has_contradictions")
+            )
+            blockers = reflection.knowledge_gaps or []
+            persistent_blockers = len(blockers) >= 2 or contradiction_count > 2
+            if coverage_pct < 30 or persistent_blockers:
+                return "prepare_sufficiency_review"
             return "begin_iteration"
         return "prepare_sufficiency_review"
 
@@ -410,16 +622,49 @@ class ResearchGraphNodes:
                 {
                     "evidence_id": item.evidence_id,
                     "source_id": item.source_id,
-                    "source_title": source.title if source else None,
+                    "source_title": _truncate_text(source.title if source else None),
                     "source_url": source_url,
                     "source_domain": source_domain,
                     "supports_task_id": item.supports_task_id,
-                    "claim": item.claim,
-                    "excerpt": item.excerpt,
+                    "claim": _truncate_text(item.claim),
+                    "excerpt": _truncate_text(item.excerpt),
                     "confidence": item.confidence,
+                    "evidence_type": item.evidence_type,
+                    "anchor_quotes": item.anchor_quotes,
+                    "confidence_signal": item.confidence_signal,
+                    "contradiction_flag": item.contradiction_flag,
                 }
             )
         return summary
+
+    def _compute_coverage_metrics(self, state: ResearchGraphState, evidence_summary: list[dict[str, Any]]) -> dict[str, Any]:
+        tasks = state.get("plan_tasks", [])
+        task_coverage: dict[str, Any] = {}
+        for task in tasks:
+            task_evidence = [e for e in evidence_summary if e.get("supports_task_id") == task.task_id]
+            task_sources = list(set(e.get("source_id") for e in task_evidence))
+            avg_confidence = sum(e.get("confidence", 0) for e in task_evidence) / max(len(task_evidence), 1)
+            has_contradictions = any(e.get("contradiction_flag") for e in task_evidence)
+            task_coverage[task.task_id] = {
+                "evidence_count": len(task_evidence),
+                "source_count": len(task_sources),
+                "avg_confidence": round(avg_confidence, 3),
+                "has_contradictions": has_contradictions,
+                "primary_sources": [sid for sid in task_sources if any(
+                    s.source_id == sid and s.authority_tier == "PRIMARY"
+                    for s in state.get("sources", [])
+                )],
+            }
+        total_evidence = len(evidence_summary)
+        total_tasks = len(tasks)
+        covered_tasks = sum(1 for v in task_coverage.values() if v["evidence_count"] > 0)
+        return {
+            "total_evidence": total_evidence,
+            "total_tasks": total_tasks,
+            "covered_tasks": covered_tasks,
+            "coverage_pct": round(covered_tasks / max(total_tasks, 1) * 100, 1),
+            "task_coverage": task_coverage,
+        }
 
     def _task_updates_from_reflection(
         self,
@@ -582,12 +827,14 @@ def build_research_graph(*, checkpointer: Any, services: ResearchServiceBundle, 
     builder.add_node("apply_plan_feedback", nodes.apply_plan_feedback)
     builder.add_node("begin_iteration", nodes.begin_iteration)
     builder.add_node("search_sources", nodes.search_sources)
+    builder.add_node("triage_sources", nodes.triage_sources)
     builder.add_node("extract_evidence", nodes.extract_evidence)
     builder.add_node("reflect_research", nodes.reflect_research)
     builder.add_node("prepare_sufficiency_review", nodes.prepare_sufficiency_review)
     builder.add_node("await_sufficiency_review", nodes.await_sufficiency_review)
     builder.add_node("apply_sufficiency_feedback", nodes.apply_sufficiency_feedback)
     builder.add_node("synthesize_report", nodes.synthesize_report)
+    builder.add_node("quality_gate", nodes.quality_gate)
     builder.add_node("cancel_run", nodes.cancel_run)
 
     builder.add_edge(START, "plan_research")
@@ -604,7 +851,8 @@ def build_research_graph(*, checkpointer: Any, services: ResearchServiceBundle, 
     )
     builder.add_edge("apply_plan_feedback", "plan_research")
     builder.add_edge("begin_iteration", "search_sources")
-    builder.add_edge("search_sources", "extract_evidence")
+    builder.add_edge("search_sources", "triage_sources")
+    builder.add_edge("triage_sources", "extract_evidence")
     builder.add_edge("extract_evidence", "reflect_research")
     builder.add_conditional_edges(
         "reflect_research",
@@ -625,6 +873,7 @@ def build_research_graph(*, checkpointer: Any, services: ResearchServiceBundle, 
         },
     )
     builder.add_edge("apply_sufficiency_feedback", "begin_iteration")
-    builder.add_edge("synthesize_report", END)
+    builder.add_edge("synthesize_report", "quality_gate")
+    builder.add_edge("quality_gate", END)
     builder.add_edge("cancel_run", END)
     return builder.compile(checkpointer=checkpointer)

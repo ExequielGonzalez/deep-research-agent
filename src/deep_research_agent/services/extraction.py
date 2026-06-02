@@ -46,26 +46,47 @@ class ContentExtractor:
             return ExtractionResult(evidence=[], notes=[f"No extractable content for {source.url}"])
 
         normalized_text = _normalize_text(raw_text)[: self._settings.max_content_chars_per_source]
+        keywords = _keywords(task.search_query, task.title, task.description, research_request.query)
+
         passages = _top_passages(
             normalized_text,
-            keywords=_keywords(task.search_query, task.title, task.description, research_request.query),
-            limit=2,
+            keywords=keywords,
+            limit=4,
         )
+
         evidence: list[EvidenceRecord] = []
         for passage, score in passages:
+            claim = _claim_from_passage(passage)
+            anchor_quotes = _extract_anchor_quotes(passage, limit=2)
+            confidence_signal = self._build_confidence_signal(score, passage, task)
+
             evidence.append(
                 EvidenceRecord(
                     evidence_id=stable_hash(f"{source.source_id}:{task.task_id}:{passage}", prefix="evi_"),
                     source_id=source.source_id,
-                    claim=_claim_from_passage(passage),
+                    claim=claim,
                     excerpt=passage,
                     rationale=f"Keyword overlap score {score:.2f} for task '{task.title}'.",
                     confidence=min(0.95, 0.35 + (score * 0.15)),
                     supports_task_id=task.task_id,
+                    evidence_type="claim",
+                    anchor_quotes=anchor_quotes,
+                    claim_normalization=claim.lower().strip(),
+                    confidence_signal=confidence_signal,
                 )
             )
+
         notes = [f"Extracted {len(evidence)} evidence item(s) from {source.title} for task {task.task_id}."] if evidence else []
         return ExtractionResult(evidence=evidence, notes=notes)
+
+    def _build_confidence_signal(self, score: float, passage: str, task: PlanTask) -> str:
+        parts = []
+        parts.append(f"keyword_overlap:{score:.2f}")
+        if len(passage.split()) > 20:
+            parts.append("sufficient_length")
+        if task.section_title:
+            parts.append(f"section_match:{task.section_title}")
+        return " | ".join(parts)
 
     async def _fetch_text(self, url: str) -> str:
         def _fetch() -> str:
@@ -138,6 +159,21 @@ def _claim_from_passage(passage: str) -> str:
     return f"{shortened[:177].rstrip()}..."
 
 
+def _extract_anchor_quotes(passage: str, *, limit: int = 2) -> list[str]:
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", passage) if s.strip()]
+    if not sentences:
+        return []
+    if len(sentences) <= limit:
+        return sentences
+    selected = [sentences[0]]
+    step = max(1, (len(sentences) - 1) // (limit - 1))
+    for i in range(1, len(sentences), step):
+        if len(selected) >= limit:
+            break
+        selected.append(sentences[i])
+    return selected[:limit]
+
+
 
 def _top_passages(text: str, *, keywords: set[str], limit: int) -> list[tuple[str, float]]:
     chunks = [chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", text) if chunk.strip()]
@@ -149,7 +185,9 @@ def _top_passages(text: str, *, keywords: set[str], limit: int) -> list[tuple[st
         overlap = len(chunk_words & keywords)
         if overlap <= 0:
             continue
-        scored.append((chunk, overlap / max(len(keywords), 1)))
+        # Also score by length bonus to prefer more informative passages
+        length_bonus = min(0.1, len(chunk) / 1000.0)
+        scored.append((chunk, overlap / max(len(keywords), 1) + length_bonus))
     scored.sort(key=lambda item: (-item[1], -len(item[0]), item[0]))
     return scored[:limit]
 
